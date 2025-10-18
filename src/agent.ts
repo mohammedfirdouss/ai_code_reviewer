@@ -10,9 +10,9 @@ import { WebSocketHandler } from './lib/websocket-handler';
  */
 export class CodeReviewerAgent extends DurableObject {
   private state: ReviewState;
-  private ctx: any;
   private env: Env;
   private wsHandler: WebSocketHandler;
+  private stateReady: Promise<void>;
 
   constructor(ctx: any, env: Env) {
     super(ctx, env);
@@ -25,22 +25,28 @@ export class CodeReviewerAgent extends DurableObject {
       reviews: []
     };
 
-    // Load state from storage
-    this.loadState();
-    
-    // Initialize WebSocket handler
+    // Initialize WebSocket handler with in-memory state
     this.wsHandler = new WebSocketHandler(this.state, env);
+
+    // Load state from storage
+    this.stateReady = this.loadState();
   }
 
   private async loadState() {
-    // Load reviews from storage
-    const reviews = await this.ctx.storage.get('reviews') || [];
-    const history = await this.ctx.storage.get('history') || [];
-    
-    this.state = {
-      reviews,
-      history
-    };
+    try {
+      // Load reviews from storage
+      const [reviews, history] = await Promise.all([
+        this.ctx.storage.get('reviews'),
+        this.ctx.storage.get('history')
+      ]);
+
+      this.state.reviews = Array.isArray(reviews) ? reviews : [];
+      this.state.history = Array.isArray(history) ? history : [];
+    } catch (error) {
+      this.state.reviews = [];
+      this.state.history = [];
+      console.error('Failed to load Durable Object state:', error);
+    }
   }
 
   private async saveState() {
@@ -53,6 +59,7 @@ export class CodeReviewerAgent extends DurableObject {
    * Handle HTTP and WebSocket upgrade requests
    */
   async fetch(request: any): Promise<any> {
+    await this.stateReady;
     const url = new URL(request.url);
     
     // WebSocket upgrade for real-time communication
@@ -218,6 +225,7 @@ export class CodeReviewerAgent extends DurableObject {
    * Handle WebSocket messages
    */
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    await this.stateReady;
     await this.wsHandler.handleMessage(ws, message);
     // Save state after each message
     await this.saveState();

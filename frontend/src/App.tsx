@@ -105,16 +105,23 @@ function App() {
         if (data.review.result) {
           addMessage('agent', data.review.result);
         }
-        // Add the completed review to our local state
+        // Add the completed review to our local state (avoid duplicates)
         const newReview: Review = {
           id: data.review.id,
           result: data.review.result || '',
-          timestamp: Date.now(),
-          language: language,
-          category: category,
-          code: code
+          timestamp: data.review.timestamp || Date.now(),
+          language: data.review.language || language,
+          category: data.review.category || category,
+          code: data.review.code || code
         };
-        setReviews(prev => [newReview, ...prev]);
+        setReviews(prev => {
+          // Check if this review already exists
+          const exists = prev.some(review => review.id === newReview.id);
+          if (exists) {
+            return prev; // Don't add duplicate
+          }
+          return [newReview, ...prev];
+        });
         addMessage('system', `✅ Review completed! Check the "Reviews" tab to see all your reviews.`);
         setActiveTab('reviews');
         break;
