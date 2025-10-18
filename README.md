@@ -88,18 +88,23 @@ The Worker runs on `http://localhost:8787` and the frontend on `http://localhost
 ```
 cf_ai_code_reviewer/
 ├── src/
-│   ├── index.ts          # Worker entry point
-│   └── agent.ts          # Durable Object Agent class
+│   ├── index.ts                      # Worker entry point
+│   ├── agent.ts                      # Durable Object Agent class
+│   ├── types.ts                      # TypeScript type definitions
+│   └── lib/
+│       ├── code-review-service.ts    # Code review logic
+│       └── websocket-handler.ts      # WebSocket message handling
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx       # Main React component
-│   │   ├── App.css       # Styles
-│   │   ├── main.tsx      # React entry
-│   │   └── index.css     # Global styles
+│   │   ├── App.tsx                   # Main React component
+│   │   ├── App.css                   # Styles
+│   │   ├── main.tsx                  # React entry
+│   │   ├── vite-env.d.ts             # Vite environment types
+│   │   └── index.css                 # Global styles
 │   ├── index.html
 │   ├── vite.config.ts
 │   └── package.json
-├── wrangler.toml         # Worker configuration
+├── wrangler.toml                     # Worker configuration
 ├── package.json
 └── tsconfig.json
 ```
