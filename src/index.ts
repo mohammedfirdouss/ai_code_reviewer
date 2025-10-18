@@ -49,6 +49,16 @@ export default {
       if (url.pathname === '/api' && request.method === 'GET') {
         return this.handleApiDocs(corsHeaders);
       }
+
+      // Test AI binding
+      if (url.pathname === '/test-ai' && request.method === 'GET') {
+        return await this.handleTestAI(request, env, corsHeaders);
+      }
+
+      // Test code review directly
+      if (url.pathname === '/test-review' && request.method === 'POST') {
+        return await this.handleTestReview(request, env, corsHeaders);
+      }
       
       // Not found
       return new Response('Not Found', { 
@@ -251,6 +261,7 @@ export default {
         'POST /api/review': 'Submit code for review',
         'GET /api/reviews': 'Get all reviews',
         'GET /api/status': 'Get service status',
+        'GET /test-ai': 'Test AI binding',
         'GET /agent': 'WebSocket endpoint for real-time reviews'
       },
       examples: {
@@ -267,5 +278,97 @@ export default {
     return new Response(JSON.stringify(docs, null, 2), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
+  },
+
+  /**
+   * Test AI binding
+   */
+  async handleTestAI(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      // Simple AI test
+      const response = await env.AI.run(
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        {
+          messages: [
+            { role: "user", content: "Say 'AI is working!' in one word." }
+          ]
+        }
+      );
+
+      // Check if response is async iterable
+      let result = "";
+      if (response && typeof response[Symbol.asyncIterator] === 'function') {
+        for await (const chunk of response) {
+          if (chunk.response) {
+            result += chunk.response;
+          }
+        }
+      } else {
+        // Handle non-streaming response
+        result = response?.response || JSON.stringify(response);
+      }
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        aiResponse: result,
+        responseType: typeof response,
+        message: "AI binding is working!"
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'AI test failed',
+        message: "AI binding issue detected"
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Test code review directly
+   */
+  async handleTestReview(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const body = await request.json();
+      const { code, category = 'quick', language = 'javascript' } = body;
+
+      // Import and use CodeReviewService directly
+      const { CodeReviewService } = await import('./lib/code-review-service');
+      
+      let fullResponse = '';
+      const result = await CodeReviewService.performReview(
+        env.AI,
+        { code, category, language },
+        (chunk: string) => {
+          fullResponse += chunk;
+        }
+      );
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        review: {
+          id: crypto.randomUUID(),
+          code: code.slice(0, 2000),
+          category,
+          language,
+          result: fullResponse,
+          timestamp: Date.now()
+        }
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Review test failed'
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
   }
 };

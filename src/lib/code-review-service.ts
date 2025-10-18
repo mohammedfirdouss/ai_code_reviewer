@@ -62,12 +62,25 @@ export class CodeReviewService {
 
     let fullResponse = "";
     
-    // Stream the response
-    for await (const chunk of response) {
-      if (chunk.response) {
-        fullResponse += chunk.response;
-        onChunk(chunk.response);
+    // Debug: Log the response structure
+    console.log("AI Response type:", typeof response);
+    console.log("AI Response keys:", response ? Object.keys(response) : "null");
+    
+    // Handle both streaming and non-streaming responses
+    if (response && typeof response[Symbol.asyncIterator] === 'function') {
+      // Stream the response
+      for await (const chunk of response) {
+        if (chunk.response) {
+          fullResponse += chunk.response;
+          onChunk(chunk.response);
+        }
       }
+    } else {
+      // Handle non-streaming response - try different possible response formats
+      const result = response?.response || response?.text || response?.content || response?.message || response?.output || JSON.stringify(response);
+      fullResponse = result || "No response received";
+      onChunk(fullResponse);
+      console.log("Non-streaming result:", result);
     }
     
     return fullResponse;

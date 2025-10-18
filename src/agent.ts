@@ -199,19 +199,19 @@ export class CodeReviewerAgent extends DurableObject {
   private async performAIReview(code: string, category: string, language: string): Promise<string> {
     const { CodeReviewService } = await import('./lib/code-review-service');
     
-    return new Promise((resolve, reject) => {
-      let fullResponse = '';
-      
-      CodeReviewService.performReview(
-        this.env.AI,
-        { code, category, language },
-        (chunk: string) => {
-          fullResponse += chunk;
-        }
-      ).then(() => {
-        resolve(fullResponse);
-      }).catch(reject);
-    });
+    // Ensure category is valid
+    const validCategory = ['quick', 'security', 'performance', 'documentation'].includes(category) 
+      ? category as 'quick' | 'security' | 'performance' | 'documentation'
+      : 'quick';
+    
+    return await CodeReviewService.performReview(
+      this.env.AI,
+      { code, category: validCategory, language },
+      (chunk: string) => {
+        // The CodeReviewService handles accumulation internally
+        // This callback can be used for real-time streaming if needed
+      }
+    );
   }
 
   /**
