@@ -60,6 +60,9 @@ export class WebSocketHandler {
   async handleCodeReview(ws: WebSocket, data: any) {
     const { code, category, language } = data;
     
+    // Generate review ID early to prevent duplicates
+    const reviewId = CodeReviewService.generateReviewId();
+    
     // Add to conversation history
     this.state.history.push({
       role: "user",
@@ -75,6 +78,16 @@ export class WebSocketHandler {
     }));
 
     try {
+      // Create review object early
+      const review = {
+        id: reviewId,
+        code: code.slice(0, 2000),
+        category,
+        language,
+        result: '',
+        timestamp: Date.now()
+      };
+
       // Perform the review using our service
       const fullResponse = await CodeReviewService.performReview(
         this.env.AI, 
@@ -88,16 +101,10 @@ export class WebSocketHandler {
         }
       );
       
-      // Save the review
-      const reviewId = CodeReviewService.generateReviewId();
-      const review = {
-        id: reviewId,
-        code: code.slice(0, 2000),
-        category,
-        result: fullResponse,
-        timestamp: Date.now()
-      };
+      // Update the review with the result
+      review.result = fullResponse;
       
+      // Only add ONE review to the state
       this.state.reviews.push(review);
       this.state.history.push({
         role: "assistant",

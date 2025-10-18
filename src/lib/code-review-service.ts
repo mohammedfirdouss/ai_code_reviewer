@@ -48,41 +48,59 @@ export class CodeReviewService {
     const { code, category, language } = data;
     const systemPrompt = this.getSystemPrompt(category);
     
-    // Call Workers AI with Llama 3.3
-    const response = await ai.run(
-      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-      {
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: this.formatCodeForReview(code, language) }
-        ],
-        stream: true
-      }
-    );
+    try {
+      // Call Workers AI with a more reliable model
+      const response = await ai.run(
+        "@cf/meta/llama-3.1-8b-instruct",
+        {
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: this.formatCodeForReview(code, language) }
+          ]
+        }
+      );
 
-    let fullResponse = "";
-    
-    // Debug: Log the response structure
-    console.log("AI Response type:", typeof response);
-    console.log("AI Response keys:", response ? Object.keys(response) : "null");
-    
-    // Handle both streaming and non-streaming responses
-    if (response && typeof response[Symbol.asyncIterator] === 'function') {
-      // Stream the response
-      for await (const chunk of response) {
-        if (chunk.response) {
-          fullResponse += chunk.response;
-          onChunk(chunk.response);
+      let fullResponse = "";
+      
+      // Debug: Log the response structure
+      console.log("AI Response type:", typeof response);
+      console.log("AI Response:", response);
+      
+      // Handle the response from the non-streaming model
+      if (response && response.response) {
+        fullResponse = response.response;
+        onChunk(fullResponse);
+      } else if (response && typeof response === 'string') {
+        fullResponse = response;
+        onChunk(fullResponse);
+      } else if (response && response.text) {
+        fullResponse = response.text;
+        onChunk(fullResponse);
+      } else if (response && response.content) {
+        fullResponse = response.content;
+        onChunk(fullResponse);
+      } else {
+        // Fallback: try to extract any text content
+        console.log("Fallback response processing...");
+        const result = response?.message || response?.output || JSON.stringify(response);
+        if (result && typeof result === 'string') {
+          fullResponse = result;
+          onChunk(fullResponse);
+        } else {
+          throw new Error(`Unexpected AI response format: ${JSON.stringify(response)}`);
         }
       }
-    } else {
-      // Handle non-streaming response - try different possible response formats
-      const result = response?.response || response?.text || response?.content || response?.message || response?.output || JSON.stringify(response);
-      fullResponse = result || "No response received";
-      onChunk(fullResponse);
-      console.log("Non-streaming result:", result);
+      
+      if (!fullResponse || fullResponse.trim() === "") {
+        throw new Error("AI returned empty response");
+      }
+      
+      console.log("Final response length:", fullResponse.length);
+      return fullResponse;
+      
+    } catch (error) {
+      console.error("AI Review Error:", error);
+      throw new Error(`AI review failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    return fullResponse;
   }
 }

@@ -88,11 +88,22 @@ function App() {
       case 'reviews':
         try {
           const fetchedReviews = data.reviews || [];
-          setReviews(fetchedReviews);
-          if (fetchedReviews.length === 0) {
+          // Filter out empty results and merge with existing reviews (avoid duplicates)
+          const validReviews = fetchedReviews.filter((review: Review) => 
+            review.result && review.result.trim() !== ''
+          );
+          
+          setReviews(prev => {
+            // Merge reviews, avoiding duplicates based on ID
+            const existingIds = new Set(prev.map(r => r.id));
+            const newReviews = validReviews.filter((review: Review) => !existingIds.has(review.id));
+            return [...prev, ...newReviews];
+          });
+          
+          if (validReviews.length === 0) {
             addMessage('system', '📋 No past reviews found. Your reviews will appear here once you submit code for analysis.');
           } else {
-            addMessage('system', `📋 Found ${fetchedReviews.length} review(s). Check the "Reviews" tab to see them.`);
+            addMessage('system', `📋 Found ${validReviews.length} review(s). Check the "Reviews" tab to see them.`);
             setActiveTab('reviews');
           }
         } catch (e) {
