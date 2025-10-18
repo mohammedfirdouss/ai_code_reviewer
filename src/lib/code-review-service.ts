@@ -87,7 +87,7 @@ function detectLanguage(code: string): string[] {
 /**
  * Validate if the provided language matches the detected language
  */
-function validateLanguage(code: string, providedLanguage: string): { 
+export function validateLanguage(code: string, providedLanguage: string): { 
   isValid: boolean; 
   detectedLanguages: string[]; 
   suggestion?: string;
@@ -182,23 +182,6 @@ export class CodeReviewService {
   ): Promise<string> {
     const { code, category, language } = data;
     
-    // Validate language before processing
-    const validation = validateLanguage(code, language || 'javascript');
-    
-    if (!validation.isValid) {
-      const errorMessage = validation.errorMessage || "Language validation failed";
-      const suggestion = validation.suggestion ? `\n\n💡 ${validation.suggestion}` : "";
-      throw new Error(`${errorMessage}${suggestion}`);
-    }
-    
-    // If we have a suggestion but validation passed, include it in the review
-    let languageNote = "";
-    if (validation.suggestion) {
-      languageNote = `\n\n**Language Detection Note:** ${validation.suggestion}\n\n`;
-    } else if (validation.detectedLanguages.length > 1) {
-      languageNote = `\n\n**Language Detection:** Code appears to be ${validation.detectedLanguages.join(' or ')}.\n\n`;
-    }
-    
     const systemPrompt = this.getSystemPrompt(category);
     
     try {
@@ -248,11 +231,8 @@ export class CodeReviewService {
         throw new Error("AI returned empty response");
       }
       
-      // Prepend language detection note if any
-      const finalResponse = languageNote + fullResponse;
-      
-      console.log("Final response length:", finalResponse.length);
-      return finalResponse;
+      console.log("Final response length:", fullResponse.length);
+      return fullResponse;
       
     } catch (error) {
       console.error("AI Review Error:", error);

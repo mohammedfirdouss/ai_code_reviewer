@@ -63,21 +63,37 @@ export class WebSocketHandler {
     // Generate review ID early to prevent duplicates
     const reviewId = CodeReviewService.generateReviewId();
     
-    // Add to conversation history
-    this.state.history.push({
-      role: "user",
-      content: `Review this ${language || 'code'} (${category} analysis):\n${code.slice(0, 500)}...`,
-      timestamp: Date.now()
-    });
-    
-    // Send initial acknowledgment
-    ws.send(JSON.stringify({ 
-      type: "stream", 
-      stage: "init",
-      text: `Starting ${category} review for ${language || 'code'}...` 
-    }));
-
     try {
+      // Validate language BEFORE starting the review process
+      const { validateLanguage } = await import('./code-review-service');
+      const validation = validateLanguage(code, language || 'javascript');
+      
+      if (!validation.isValid) {
+        const errorMessage = validation.errorMessage || "Language validation failed";
+        const suggestion = validation.suggestion ? `\n\n💡 ${validation.suggestion}` : "";
+        
+        ws.send(JSON.stringify({ 
+          type: "language_error", 
+          error: errorMessage,
+          suggestion: validation.suggestion || "Please check your language selection and try again."
+        }));
+        return; // Stop processing
+      }
+      
+      // Add to conversation history
+      this.state.history.push({
+        role: "user",
+        content: `Review this ${language || 'code'} (${category} analysis):\n${code.slice(0, 500)}...`,
+        timestamp: Date.now()
+      });
+      
+      // Send initial acknowledgment AFTER validation passes
+      ws.send(JSON.stringify({ 
+        type: "stream", 
+        stage: "init",
+        text: `Starting ${category} review for ${language || 'code'}...` 
+      }));
+
       // Create review object early
       const review = {
         id: reviewId,

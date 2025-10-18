@@ -4,7 +4,7 @@ A real-time AI code review application with **intelligent language detection** b
 
 ## 🎉 Live Deployment
 
-- **🌐 Frontend**: https://c26addb7.ai-code-reviewer-5fq.pages.dev
+- **🌐 Frontend**: https://ai-code-reviewer-5fq.pages.dev
 - **⚡ Backend Worker**: https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev
 - **🔌 WebSocket**: wss://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/agent
 - **📚 API Docs**: https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api
@@ -12,7 +12,7 @@ A real-time AI code review application with **intelligent language detection** b
 ## 🚀 Quick Start (3 Ways)
 
 ### 1. Use Live App (Zero Setup!) 🌐
-Just visit: **https://c26addb7.ai-code-reviewer-5fq.pages.dev**
+Just visit: **https://6960760b.ai-code-reviewer-5fq.pages.dev**
 
 Paste code, select review type, and watch AI analysis stream in real-time!
 
@@ -198,7 +198,7 @@ npm run deploy
 
 The frontend is already deployed and connected to the production Worker!
 
-**Frontend URL**: https://c26addb7.ai-code-reviewer-5fq.pages.dev
+**Frontend URL**: https://6960760b.ai-code-reviewer-5fq.pages.dev
 
 To redeploy or update:
 ```bash

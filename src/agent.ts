@@ -128,6 +128,22 @@ export class CodeReviewerAgent extends DurableObject {
           });
         }
 
+        // Validate language before processing
+        const { validateLanguage } = await import('./lib/code-review-service');
+        const validation = validateLanguage(code, language);
+        
+        if (!validation.isValid) {
+          const errorMessage = validation.errorMessage || "Language validation failed";
+          const suggestion = validation.suggestion ? ` ${validation.suggestion}` : "";
+          return new Response(JSON.stringify({ 
+            error: `${errorMessage}${suggestion}`,
+            detectedLanguages: validation.detectedLanguages
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
         // Perform the review
         const reviewId = this.generateReviewId();
         const review = {
