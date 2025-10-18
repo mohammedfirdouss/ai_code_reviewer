@@ -2,6 +2,47 @@
 
 A real-time AI code review application built with Cloudflare's modern stack: Workers AI (Llama 3.3), Durable Objects, and Cloudflare Pages.
 
+## 🎉 Live Deployment
+
+- **🌐 Frontend**: https://ai-code-reviewer-frontend.pages.dev
+- **⚡ Backend Worker**: https://ai-code-reviewer.mohammedfirdousaraoye.workers.dev
+- **🔌 WebSocket**: wss://ai-code-reviewer.mohammedfirdousaraoye.workers.dev/agent
+
+## 🚀 Quick Start (3 Ways)
+
+### 1. Use Live App (Zero Setup!) 🌐
+Just visit: **https://ai-code-reviewer-frontend.pages.dev**
+
+Paste code, select review type, and watch AI analysis stream in real-time!
+
+### 2. Test WebSocket (No Setup!) ⚡
+```bash
+# Open the standalone test file
+open test-websocket.html
+```
+This provides an instant UI to test the AI code reviewer!
+
+### 3. Local Development 💻
+```bash
+# Start frontend (connects to production Worker automatically)
+npm run dev:frontend
+# Opens at http://localhost:5173
+```
+
+### 4. Deploy Your Own 🚀
+```bash
+# Clone and set up
+git clone <your-repo>
+npm install
+npm run setup  # Configure environment
+
+# Deploy backend
+npm run deploy
+
+# Deploy frontend (uses .env for credentials - no OAuth!)
+cd frontend && npm run deploy
+```
+
 ## Features
 
 - **Real-time Code Analysis**: Stream AI responses as they're generated
@@ -11,8 +52,9 @@ A real-time AI code review application built with Cloudflare's modern stack: Wor
   - Security Audit: Vulnerability detection & OWASP analysis
   - Performance Analysis: Optimization suggestions
   - Documentation Review: Comment & doc improvements
-- **Stateful Conversations**: Maintains review history in Durable Objects
+- **Stateful Conversations**: Maintains review history in SQLite-based Durable Objects
 - **WebSocket Communication**: Instant bidirectional updates
+- **Free Plan Compatible**: Uses SQLite-based Durable Objects for Cloudflare free tier
 
 ## Architecture
 
@@ -111,26 +153,61 @@ cf_ai_code_reviewer/
 
 ## Deployment
 
-### Deploy Worker
+### Backend Worker Deployment ✅ LIVE
 
+The backend is already deployed and running!
+
+**Worker URL**: https://ai-code-reviewer.mohammedfirdousaraoye.workers.dev
+
+To redeploy or update:
 ```bash
+# Set up environment variables first
+npm run setup  # Creates .env file
+# Edit .env with your CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN
+
+# Deploy
 npm run deploy
 ```
 
-### Deploy Frontend (Cloudflare Pages)
+### Frontend Deployment ✅ LIVE
 
-1. Build the frontend:
+The frontend is already deployed and connected to the production Worker!
+
+**Frontend URL**: https://ai-code-reviewer-frontend.pages.dev
+
+To redeploy or update:
 ```bash
 cd frontend
-npm run build
+npm run deploy  # Uses .env credentials - NO OAUTH required!
 ```
 
-2. Deploy to Cloudflare Pages:
+**No OAuth Pop-ups!** The deployment script (`deploy-with-token.sh`) uses your API token from `.env` file directly.
+
+### First-Time Setup
+
 ```bash
-wrangler pages deploy dist
+# Quick setup
+npm run setup
+
+# Or manually
+cp .env.example .env
+# Edit .env with your Cloudflare credentials:
+# CLOUDFLARE_ACCOUNT_ID=your-account-id
+# CLOUDFLARE_API_TOKEN=your-api-token
 ```
 
-Or connect your GitHub repo to Cloudflare Pages for automatic deployments.
+### Verify Deployment
+
+```bash
+# Check backend health
+curl https://ai-code-reviewer.mohammedfirdousaraoye.workers.dev/health
+
+# View logs
+npm run logs
+
+# Verify deployment
+npm run verify
+```
 
 ## Configuration
 
@@ -148,6 +225,76 @@ For production, you may want to add:
 - Custom model parameters
 
 ## Testing WebSocket Connection
+
+### Quick Test File (Recommended!)
+We've included a standalone test file that requires no setup:
+
+```bash
+# Just open in your browser
+open test-websocket.html
+# or
+python3 -m http.server 8080
+# Then visit http://localhost:8080/test-websocket.html
+```
+
+This provides a simple UI to:
+- Connect to the live Worker
+- Submit code for review
+- See real-time AI streaming responses
+- Test all review categories
+
+### Browser Test (With Full UI)
+Run the frontend locally:
+```bash
+npm run dev:frontend
+# Opens at http://localhost:5173
+```
+
+Then:
+1. Paste some code in the textarea
+2. Select a review type
+3. Click "Review Code"
+4. Watch the AI analysis stream in real-time!
+
+### Command Line Test
+
+```javascript
+// Create test-websocket.html
+<!DOCTYPE html>
+<html>
+<head><title>WebSocket Test</title></head>
+<body>
+<script>
+const ws = new WebSocket('wss://ai-code-reviewer.mohammedfirdousaraoye.workers.dev/agent');
+
+ws.onopen = () => {
+  console.log('✅ Connected!');
+  ws.send(JSON.stringify({
+    type: 'submit_code',
+    code: 'console.log("Hello World");',
+    category: 'quick',
+    language: 'javascript'
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('📨 Received:', data);
+  
+  if (data.type === 'stream') {
+    console.log('🤖 AI Response:', data.text);
+  }
+};
+
+ws.onerror = (error) => {
+  console.error('❌ WebSocket error:', error);
+};
+</script>
+</body>
+</html>
+```
+
+Open this file in your browser and check the console!
 
 ```javascript
 const ws = new WebSocket('ws://localhost:8787/agent');
