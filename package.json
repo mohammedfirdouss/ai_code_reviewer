@@ -6,7 +6,15 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "dev:frontend": "npm run dev --prefix frontend"
+    "deploy:prod": "wrangler deploy --config wrangler.prod.toml",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
+    "setup": "./setup-env.sh",
+    "check": "./pre-deploy-check.sh",
+    "verify": "./verify-deployment.sh",
+    "logs": "wrangler tail",
+    "logs:prod": "wrangler tail --config wrangler.prod.toml",
+    "preview": "wrangler dev --remote"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241011.0",
