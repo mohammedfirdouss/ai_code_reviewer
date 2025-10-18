@@ -7,6 +7,15 @@ interface Message {
   timestamp: number;
 }
 
+interface Review {
+  id: string;
+  result: string;
+  timestamp: number;
+  language: string;
+  category: string;
+  code: string;
+}
+
 function App() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -15,6 +24,9 @@ function App() {
   const [language, setLanguage] = useState('javascript');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [activeTab, setActiveTab] = useState<'chat' | 'reviews'>('chat');
+  const [currentReview, setCurrentReview] = useState<Review | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,18 +87,16 @@ function App() {
         break;
       case 'reviews':
         try {
-          const reviews = data.reviews || [];
-          if (reviews.length === 0) {
-            addMessage('system', 'No past reviews found.');
+          const fetchedReviews = data.reviews || [];
+          setReviews(fetchedReviews);
+          if (fetchedReviews.length === 0) {
+            addMessage('system', '📋 No past reviews found. Your reviews will appear here once you submit code for analysis.');
           } else {
-            addMessage('system', `Found ${reviews.length} review(s). Displaying results:`);
-            reviews.forEach((r: any) => {
-              const header = `Review ID: ${r.id} — ${new Date(r.timestamp).toLocaleString()}`;
-              addMessage('agent', header + '\n' + (r.result || '(no result saved)'));
-            });
+            addMessage('system', `📋 Found ${fetchedReviews.length} review(s). Check the "Reviews" tab to see them.`);
+            setActiveTab('reviews');
           }
         } catch (e) {
-          addMessage('system', 'Failed to parse reviews response');
+          addMessage('system', '❌ Failed to load reviews');
         }
         break;
       case 'done':
@@ -95,11 +105,22 @@ function App() {
         if (data.review.result) {
           addMessage('agent', data.review.result);
         }
-        addMessage('system', `✅ Review completed (ID: ${data.review.id})`);
+        // Add the completed review to our local state
+        const newReview: Review = {
+          id: data.review.id,
+          result: data.review.result || '',
+          timestamp: Date.now(),
+          language: language,
+          category: category,
+          code: code
+        };
+        setReviews(prev => [newReview, ...prev]);
+        addMessage('system', `✅ Review completed! Check the "Reviews" tab to see all your reviews.`);
+        setActiveTab('reviews');
         break;
       case 'error':
         setStreaming(false);
-        addMessage('system', `Error: ${data.error}`);
+        addMessage('system', `❌ Error: ${data.error}`);
         break;
       case 'pong':
         console.log('Received pong');
@@ -138,107 +159,234 @@ function App() {
   const handleClear = () => {
     setMessages([]);
     setCode('');
+    setCurrentReview(null);
+  };
+
+  const loadReviews = () => {
+    if (!ws || !connected) {
+      alert('Not connected to server');
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'list_reviews' }));
+  };
+
+  const viewReview = (review: Review) => {
+    setCurrentReview(review);
+    setActiveTab('chat');
+    setMessages([
+      { type: 'user', content: `Viewing review: ${review.language} ${review.category} review`, timestamp: Date.now() },
+      { type: 'agent', content: review.result, timestamp: review.timestamp }
+    ]);
   };
 
   return (
     <div className="app">
       <header className="header">
-        <h1>🤖 AI Code Reviewer</h1>
-        <div className="status">
-          <span className={`status-indicator ${connected ? 'connected' : 'disconnected'}`}></span>
-          {connected ? 'Connected' : 'Disconnected'}
+        <div className="header-content">
+          <div className="logo">
+            <div className="logo-icon">🤖</div>
+            <div className="logo-text">
+              <h1>AI Code Reviewer</h1>
+              <p>Intelligent Code Analysis & Review</p>
+            </div>
+          </div>
+          <div className="status">
+            <div className={`status-indicator ${connected ? 'connected' : 'disconnected'}`}></div>
+            <span className="status-text">{connected ? 'Connected' : 'Disconnected'}</span>
+          </div>
         </div>
       </header>
 
-      <div className="container">
-        <div className="input-section">
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="language">Language</label>
-              <select
-                id="language"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-              >
-                <option value="javascript">JavaScript</option>
-                <option value="typescript">TypeScript</option>
-                <option value="python">Python</option>
-                <option value="java">Java</option>
-                <option value="go">Go</option>
-                <option value="rust">Rust</option>
-                <option value="cpp">C++</option>
-                <option value="csharp">C#</option>
-              </select>
-            </div>
+      <div className="main-content">
+        <div className="sidebar">
+          <div className="tab-navigation">
+            <button 
+              className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveTab('chat')}
+            >
+              <span className="tab-icon">💬</span>
+              Live Chat
+            </button>
+            <button 
+              className={`tab-button ${activeTab === 'reviews' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('reviews');
+                loadReviews();
+              }}
+            >
+              <span className="tab-icon">📋</span>
+              Reviews ({reviews.length})
+            </button>
+          </div>
 
-            <div className="form-group">
-              <label htmlFor="category">Review Type</label>
-              <select
-                id="category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value as any)}
-              >
-                <option value="quick">Quick Review</option>
-                <option value="security">Security Audit</option>
-                <option value="performance">Performance Analysis</option>
-                <option value="documentation">Documentation Review</option>
-              </select>
-            </div>
+          {activeTab === 'chat' && (
+            <div className="input-panel">
+              <form onSubmit={handleSubmit} className="review-form">
+                <div className="form-section">
+                  <h3>Code Review Settings</h3>
+                  
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="language">Programming Language</label>
+                      <select
+                        id="language"
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value)}
+                        className="form-select"
+                      >
+                        <option value="javascript">JavaScript</option>
+                        <option value="typescript">TypeScript</option>
+                        <option value="python">Python</option>
+                        <option value="java">Java</option>
+                        <option value="go">Go</option>
+                        <option value="rust">Rust</option>
+                        <option value="cpp">C++</option>
+                        <option value="csharp">C#</option>
+                      </select>
+                    </div>
 
-            <div className="form-group">
-              <label htmlFor="code">Code to Review</label>
-              <textarea
-                id="code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Paste your code here..."
-                rows={15}
-              />
-            </div>
+                    <div className="form-group">
+                      <label htmlFor="category">Review Type</label>
+                      <select
+                        id="category"
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value as any)}
+                        className="form-select"
+                      >
+                        <option value="quick">🚀 Quick Review</option>
+                        <option value="security">🔒 Security Audit</option>
+                        <option value="performance">⚡ Performance Analysis</option>
+                        <option value="documentation">📚 Documentation Review</option>
+                      </select>
+                    </div>
+                  </div>
 
-            <div className="button-group">
-              <button type="submit" disabled={!connected || streaming}>
-                {streaming ? 'Reviewing...' : 'Review Code'}
-              </button>
-              <button type="button" onClick={handleClear}>
-                Clear
-              </button>
-              <button type="button" onClick={() => {
-                if (!ws || !connected) {
-                  alert('Not connected to server');
-                  return;
-                }
-                ws.send(JSON.stringify({ type: 'list_reviews' }));
-              }}>
-                View Reviews
-              </button>
+                  <div className="form-group">
+                    <label htmlFor="code">Code to Review</label>
+                    <textarea
+                      id="code"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      placeholder="Paste your code here for AI analysis..."
+                      className="code-textarea"
+                      rows={12}
+                    />
+                  </div>
+
+                  <div className="form-actions">
+                    <button 
+                      type="submit" 
+                      disabled={!connected || streaming}
+                      className="submit-button"
+                    >
+                      {streaming ? (
+                        <>
+                          <div className="spinner"></div>
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <span>🔍</span>
+                          Review Code
+                        </>
+                      )}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={handleClear}
+                      className="clear-button"
+                    >
+                      <span>🗑️</span>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </form>
             </div>
-          </form>
+          )}
+
+          {activeTab === 'reviews' && (
+            <div className="reviews-panel">
+              <div className="reviews-header">
+                <h3>Review History</h3>
+                <button onClick={loadReviews} className="refresh-button">
+                  <span>🔄</span>
+                  Refresh
+                </button>
+              </div>
+              
+              <div className="reviews-list">
+                {reviews.length === 0 ? (
+                  <div className="empty-reviews">
+                    <div className="empty-icon">📝</div>
+                    <p>No reviews yet</p>
+                    <p>Submit code for analysis to see your reviews here</p>
+                  </div>
+                ) : (
+                  reviews.map((review) => (
+                    <div 
+                      key={review.id} 
+                      className="review-item"
+                      onClick={() => viewReview(review)}
+                    >
+                      <div className="review-header">
+                        <div className="review-meta">
+                          <span className="review-language">{review.language}</span>
+                          <span className="review-category">{review.category}</span>
+                        </div>
+                        <div className="review-time">
+                          {new Date(review.timestamp).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div className="review-preview">
+                        {review.result.substring(0, 100)}...
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="output-section">
-          <div className="messages-header">
-            <h2>Analysis Output</h2>
-            {streaming && <div className="loading-spinner"></div>}
+        <div className="chat-panel">
+          <div className="chat-header">
+            <h2>
+              {activeTab === 'chat' ? 'Live Analysis' : 'Review Details'}
+            </h2>
+            {streaming && <div className="streaming-indicator">Streaming...</div>}
           </div>
-          <div className="messages">
-            {messages.length === 0 && (
-              <div className="empty-state">
-                <p>No messages yet. Submit code to start reviewing.</p>
+          
+          <div className="messages-container">
+            {messages.length === 0 ? (
+              <div className="empty-chat">
+                <div className="empty-icon">💡</div>
+                <h3>Ready to analyze your code!</h3>
+                <p>Paste your code and select a review type to get started</p>
+              </div>
+            ) : (
+              <div className="messages">
+                {messages.map((msg, idx) => (
+                  <div key={idx} className={`message message-${msg.type}`}>
+                    <div className="message-avatar">
+                      {msg.type === 'user' ? '👤' : msg.type === 'agent' ? '🤖' : '⚙️'}
+                    </div>
+                    <div className="message-content">
+                      <div className="message-header">
+                        <span className="message-type">
+                          {msg.type === 'user' ? 'You' : msg.type === 'agent' ? 'AI Assistant' : 'System'}
+                        </span>
+                        <span className="message-time">
+                          {new Date(msg.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <div className="message-text">{msg.content}</div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
               </div>
             )}
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`message message-${msg.type}`}>
-                <div className="message-header">
-                  <span className="message-type">{msg.type}</span>
-                  <span className="message-time">
-                    {new Date(msg.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-                <div className="message-content">{msg.content}</div>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
           </div>
         </div>
       </div>

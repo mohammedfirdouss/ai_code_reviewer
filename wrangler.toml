@@ -1,4 +1,4 @@
-name = "ai-code-reviewer-frontend"
+name = "ai-code-reviewer"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
 
