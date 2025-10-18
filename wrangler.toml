@@ -2,14 +2,14 @@ name = "ai-code-reviewer-frontend"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
-# Account ID will be read from CLOUDFLARE_ACCOUNT_ID environment variable
-# No need to hardcode account_id here
+
+# Pages build output directory (static frontend)
+pages_build_output_dir = "frontend/dist"
 
 # AI binding configuration
 [ai]
 binding = "AI"
-# Set to true to suppress warnings in development
-# remote = true
+# remote = true  # Uncomment to suppress dev warnings if needed
 
 # Durable Objects configuration
 [[durable_objects.bindings]]
