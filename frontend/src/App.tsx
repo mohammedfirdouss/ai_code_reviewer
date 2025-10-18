@@ -136,6 +136,13 @@ function App() {
         addMessage('system', `✅ Review completed! Check the "Reviews" tab to see all your reviews.`);
         setActiveTab('reviews');
         break;
+      case 'language_error':
+        setStreaming(false);
+        addMessage('system', `🔍 Language Detection Issue: ${data.error}`);
+        if (data.suggestion) {
+          addMessage('system', `💡 ${data.suggestion}`);
+        }
+        break;
       case 'error':
         setStreaming(false);
         addMessage('system', `❌ Error: ${data.error}`);
@@ -260,6 +267,11 @@ function App() {
                         <option value="rust">Rust</option>
                         <option value="cpp">C++</option>
                         <option value="csharp">C#</option>
+                        <option value="php">PHP</option>
+                        <option value="ruby">Ruby</option>
+                        <option value="swift">Swift</option>
+                        <option value="kotlin">Kotlin</option>
+                        <option value="other">Other/Unknown</option>
                       </select>
                     </div>
 

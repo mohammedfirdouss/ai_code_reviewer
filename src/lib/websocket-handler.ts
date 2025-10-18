@@ -119,10 +119,21 @@ export class WebSocketHandler {
       }));
 
     } catch (error) {
-      ws.send(JSON.stringify({ 
-        type: "error", 
-        error: error instanceof Error ? error.message : "AI model error"
-      }));
+      const errorMessage = error instanceof Error ? error.message : "AI model error";
+      
+      // Check if it's a language validation error
+      if (errorMessage.includes("appears to be") || errorMessage.includes("doesn't appear to be code")) {
+        ws.send(JSON.stringify({ 
+          type: "language_error", 
+          error: errorMessage,
+          suggestion: "Please check your language selection and try again."
+        }));
+      } else {
+        ws.send(JSON.stringify({ 
+          type: "error", 
+          error: errorMessage
+        }));
+      }
     }
   }
 }
