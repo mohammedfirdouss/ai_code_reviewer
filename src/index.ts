@@ -32,7 +32,23 @@ export default {
         return this.handleHealthCheck(corsHeaders);
       }
 
-      // Static assets could be served here if needed
+      // API endpoints for HTTP requests
+      if (url.pathname === '/api/review' && request.method === 'POST') {
+        return await this.handleCodeReview(request, env, corsHeaders);
+      }
+
+      if (url.pathname === '/api/reviews' && request.method === 'GET') {
+        return await this.handleGetReviews(request, env, corsHeaders);
+      }
+
+      if (url.pathname === '/api/status' && request.method === 'GET') {
+        return await this.handleStatus(request, env, corsHeaders);
+      }
+
+      // API documentation endpoint
+      if (url.pathname === '/api' && request.method === 'GET') {
+        return this.handleApiDocs(corsHeaders);
+      }
       
       // Not found
       return new Response('Not Found', { 
@@ -124,6 +140,132 @@ export default {
         'Content-Type': 'application/json',
         ...corsHeaders 
       }
+    });
+  },
+
+  /**
+   * Handle code review via HTTP POST
+   */
+  async handleCodeReview(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const body = await request.json();
+      const { code, category = 'quick', language = 'javascript' } = body;
+
+      if (!code) {
+        return new Response(JSON.stringify({ error: 'Code is required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+
+      // Get agent instance
+      const agentId = env.CODE_REVIEWER_AGENT.idFromName('default-agent');
+      const agent = env.CODE_REVIEWER_AGENT.get(agentId);
+
+      // Create a review request
+      const reviewRequest = new Request('http://localhost/api/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, category, language })
+      });
+
+      // Forward to agent
+      const response = await agent.fetch(reviewRequest);
+      const result = await response.json();
+
+      return new Response(JSON.stringify(result), {
+        status: response.status,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Review failed' 
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Handle getting reviews via HTTP GET
+   */
+  async handleGetReviews(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const agentId = env.CODE_REVIEWER_AGENT.idFromName('default-agent');
+      const agent = env.CODE_REVIEWER_AGENT.get(agentId);
+
+      const response = await agent.fetch('http://localhost/reviews');
+      const reviews = await response.json();
+
+      return new Response(JSON.stringify(reviews), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Failed to get reviews' 
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Handle status check via HTTP GET
+   */
+  async handleStatus(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const agentId = env.CODE_REVIEWER_AGENT.idFromName('default-agent');
+      const agent = env.CODE_REVIEWER_AGENT.get(agentId);
+
+      const response = await agent.fetch('http://localhost/status');
+      const status = await response.json();
+
+      return new Response(JSON.stringify(status), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Status check failed' 
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Handle API documentation
+   */
+  handleApiDocs(corsHeaders: Record<string, string>) {
+    const docs = {
+      service: 'AI Code Reviewer API',
+      version: '1.0.0',
+      endpoints: {
+        'GET /': 'Health check',
+        'GET /health': 'Health check',
+        'GET /api': 'API documentation (this endpoint)',
+        'POST /api/review': 'Submit code for review',
+        'GET /api/reviews': 'Get all reviews',
+        'GET /api/status': 'Get service status',
+        'GET /agent': 'WebSocket endpoint for real-time reviews'
+      },
+      examples: {
+        'POST /api/review': {
+          body: {
+            code: 'console.log("Hello World");',
+            category: 'quick',
+            language: 'javascript'
+          }
+        }
+      }
+    };
+
+    return new Response(JSON.stringify(docs, null, 2), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
   }
 };

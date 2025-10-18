@@ -45,7 +45,7 @@ function App() {
     // Use production Worker URL or localhost for development
     const host = import.meta.env.DEV 
       ? 'localhost:8787' 
-      : 'ai-code-reviewer.mohammedfirdousaraoye.workers.dev';
+      : 'ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev';
     const wsUrl = `${protocol}//${host}/agent`;
     
     const socket = new WebSocket(wsUrl);

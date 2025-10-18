@@ -4,32 +4,52 @@ A real-time AI code review application built with Cloudflare's modern stack: Wor
 
 ## 🎉 Live Deployment
 
-- **🌐 Frontend**: https://ai-code-reviewer-frontend.pages.dev
-- **⚡ Backend Worker**: https://ai-code-reviewer.mohammedfirdousaraoye.workers.dev
-- **🔌 WebSocket**: wss://ai-code-reviewer.mohammedfirdousaraoye.workers.dev/agent
+- **🌐 Frontend**: https://db643ca2.ai-code-reviewer-5fq.pages.dev
+- **⚡ Backend Worker**: https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev
+- **🔌 WebSocket**: wss://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/agent
+- **📚 API Docs**: https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api
 
 ## 🚀 Quick Start (3 Ways)
 
 ### 1. Use Live App (Zero Setup!) 🌐
-Just visit: **https://ai-code-reviewer-frontend.pages.dev**
+Just visit: **https://db643ca2.ai-code-reviewer-5fq.pages.dev**
 
 Paste code, select review type, and watch AI analysis stream in real-time!
 
-### 2. Test WebSocket (No Setup!) ⚡
+### 2. Use HTTP API (No Frontend!) 🔗
+Send HTTP requests directly to the backend:
+
+```bash
+# Submit code for review
+curl -X POST https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/review \
+  -H "Content-Type: application/json" \
+  -d '{"code": "console.log(\"Hello World\");", "category": "quick", "language": "javascript"}'
+
+# Get all reviews
+curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/reviews
+
+# Check service status
+curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/status
+
+# View API documentation
+curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api
+```
+
+### 3. Test WebSocket (No Setup!) ⚡
 ```bash
 # Open the standalone test file
 open test-websocket.html
 ```
 This provides an instant UI to test the AI code reviewer!
 
-### 3. Local Development 💻
+### 4. Local Development 💻
 ```bash
 # Start frontend (connects to production Worker automatically)
 npm run dev:frontend
 # Opens at http://localhost:5173
 ```
 
-### 4. Deploy Your Own 🚀
+### 5. Deploy Your Own 🚀
 ```bash
 # Clone and set up
 git clone <your-repo>
@@ -157,7 +177,7 @@ cf_ai_code_reviewer/
 
 The backend is already deployed and running!
 
-**Worker URL**: https://ai-code-reviewer.mohammedfirdousaraoye.workers.dev
+**Worker URL**: https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev
 
 To redeploy or update:
 ```bash
@@ -173,7 +193,7 @@ npm run deploy
 
 The frontend is already deployed and connected to the production Worker!
 
-**Frontend URL**: https://ai-code-reviewer-frontend.pages.dev
+**Frontend URL**: https://db643ca2.ai-code-reviewer-5fq.pages.dev
 
 To redeploy or update:
 ```bash
@@ -200,7 +220,7 @@ cp .env.example .env
 
 ```bash
 # Check backend health
-curl https://ai-code-reviewer.mohammedfirdousaraoye.workers.dev/health
+curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/health
 
 # View logs
 npm run logs
@@ -265,7 +285,7 @@ Then:
 <head><title>WebSocket Test</title></head>
 <body>
 <script>
-const ws = new WebSocket('wss://ai-code-reviewer.mohammedfirdousaraoye.workers.dev/agent');
+const ws = new WebSocket('wss://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/agent');
 
 ws.onopen = () => {
   console.log('✅ Connected!');
@@ -314,6 +334,82 @@ ws.onmessage = (event) => {
 ```
 
 ## API Reference
+
+### HTTP API Endpoints
+
+The backend now supports both WebSocket and HTTP requests:
+
+#### **GET /api** - API Documentation
+Returns complete API documentation and examples.
+
+#### **POST /api/review** - Submit Code Review
+Submit code for AI analysis via HTTP POST.
+
+**Request Body:**
+```json
+{
+  "code": "console.log('Hello World');",
+  "category": "quick|security|performance|documentation",
+  "language": "javascript|typescript|python|java|go|rust|cpp|csharp"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "review": {
+    "id": "unique-review-id",
+    "code": "console.log('Hello World');",
+    "category": "quick",
+    "language": "javascript",
+    "result": "AI analysis result...",
+    "timestamp": 1760798282676
+  }
+}
+```
+
+#### **GET /api/reviews** - Get All Reviews
+Retrieve all submitted code reviews.
+
+**Response:**
+```json
+[
+  {
+    "id": "review-id",
+    "code": "code snippet",
+    "category": "quick",
+    "language": "javascript",
+    "result": "AI analysis",
+    "timestamp": 1760798282676
+  }
+]
+```
+
+#### **GET /api/status** - Service Status
+Check service health and statistics.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "reviewsCount": 5,
+  "messagesCount": 10
+}
+```
+
+#### **GET /health** - Health Check
+Basic health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "service": "AI Code Reviewer",
+  "version": "1.0.0",
+  "timestamp": "2025-10-18T14:33:26.572Z"
+}
+```
 
 ### WebSocket Messages
 

@@ -82,7 +82,7 @@ export class CodeReviewerAgent extends DurableObject {
   /**
    * Handle HTTP API requests
    */
-  private handleHTTPRequest(url: any, request: any): any {
+  private async handleHTTPRequest(url: any, request: any): Promise<any> {
     // GET /reviews - Return all reviews
     if (url.pathname === "/reviews" && request.method === "GET") {
       return new Response(JSON.stringify(this.state.reviews), {
@@ -108,8 +108,110 @@ export class CodeReviewerAgent extends DurableObject {
       });
     }
 
+    // POST /api/review - Handle code review via HTTP
+    if (url.pathname === "/api/review" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const { code, category = 'quick', language = 'javascript' } = body;
+
+        if (!code) {
+          return new Response(JSON.stringify({ error: 'Code is required' }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Perform the review
+        const reviewId = this.generateReviewId();
+        const review = {
+          id: reviewId,
+          code: code.slice(0, 2000),
+          category,
+          language,
+          result: '',
+          timestamp: Date.now()
+        };
+
+        // Add to conversation history
+        this.state.history.push({
+          role: "user",
+          content: `Review this ${language} (${category} analysis):\n${code.slice(0, 500)}...`,
+          timestamp: Date.now()
+        });
+
+        try {
+          // Perform AI review
+          const fullResponse = await this.performAIReview(code, category, language);
+          
+          review.result = fullResponse;
+          this.state.reviews.push(review);
+          
+          this.state.history.push({
+            role: "assistant",
+            content: fullResponse.slice(0, 500),
+            timestamp: Date.now()
+          });
+
+          // Save state
+          await this.saveState();
+
+          return new Response(JSON.stringify({
+            success: true,
+            review: review
+          }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          });
+        } catch (aiError) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: aiError instanceof Error ? aiError.message : 'AI review failed'
+          }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+      } catch (error) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : 'Invalid request'
+        }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+
     // Not found
     return new Response("Not found", { status: 404 });
+  }
+
+  /**
+   * Generate a unique review ID
+   */
+  private generateReviewId(): string {
+    return crypto.randomUUID();
+  }
+
+  /**
+   * Perform AI review using Workers AI
+   */
+  private async performAIReview(code: string, category: string, language: string): Promise<string> {
+    const { CodeReviewService } = await import('./lib/code-review-service');
+    
+    return new Promise((resolve, reject) => {
+      let fullResponse = '';
+      
+      CodeReviewService.performReview(
+        this.env.AI,
+        { code, category, language },
+        (chunk: string) => {
+          fullResponse += chunk;
+        }
+      ).then(() => {
+        resolve(fullResponse);
+      }).catch(reject);
+    });
   }
 
   /**
