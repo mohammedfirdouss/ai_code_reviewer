@@ -198,7 +198,7 @@ npm run deploy
 
 The frontend is already deployed and connected to the production Worker!
 
-**Frontend URL**: https://6960760b.ai-code-reviewer-5fq.pages.dev
+**Frontend URL**: https://ai-code-reviewer-5fq.pages.dev
 
 To redeploy or update:
 ```bash
