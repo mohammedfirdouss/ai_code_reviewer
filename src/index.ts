@@ -60,9 +60,14 @@ export default {
    */
   getCorsHeaders() {
     return {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': '*', // TODO: In production, use specific domains
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Upgrade, Connection, Sec-WebSocket-Key, Sec-WebSocket-Version',
+      // Security headers
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'X-XSS-Protection': '1; mode=block',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
     };
   },
 
@@ -74,8 +79,15 @@ export default {
     const agentId = env.CODE_REVIEWER_AGENT.idFromName('default-agent');
     const agent = env.CODE_REVIEWER_AGENT.get(agentId);
     
+    // Modify the URL to remove /agent prefix for the Durable Object
+    const url = new URL(request.url);
+    url.pathname = url.pathname.replace('/agent', '');
+    
+    // Create new request with modified URL
+    const newRequest = new Request(url.toString(), request);
+    
     // Forward request to agent
-    const response = await agent.fetch(request);
+    const response = await agent.fetch(newRequest);
     
     // Don't modify WebSocket upgrade responses
     if (response.webSocket) {
@@ -84,8 +96,13 @@ export default {
     
     // Add CORS headers to HTTP responses
     const responseHeaders = { ...corsHeaders };
+    if (response.headers) {
+      for (const [key, value] of response.headers) {
+        responseHeaders[key] = value;
+      }
+    }
     
-    // Simply use the CORS headers
+    // Return response with CORS headers
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,

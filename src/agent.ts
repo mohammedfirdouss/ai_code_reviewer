@@ -24,9 +24,29 @@ export class CodeReviewerAgent extends DurableObject {
       history: [],
       reviews: []
     };
+
+    // Load state from storage
+    this.loadState();
     
     // Initialize WebSocket handler
     this.wsHandler = new WebSocketHandler(this.state, env);
+  }
+
+  private async loadState() {
+    // Load reviews from storage
+    const reviews = await this.ctx.storage.get('reviews') || [];
+    const history = await this.ctx.storage.get('history') || [];
+    
+    this.state = {
+      reviews,
+      history
+    };
+  }
+
+  private async saveState() {
+    // Save state to storage
+    await this.ctx.storage.put('reviews', this.state.reviews);
+    await this.ctx.storage.put('history', this.state.history);
   }
 
   /**
@@ -97,6 +117,8 @@ export class CodeReviewerAgent extends DurableObject {
    */
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
     await this.wsHandler.handleMessage(ws, message);
+    // Save state after each message
+    await this.saveState();
   }
 
   /**

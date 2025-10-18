@@ -30,8 +30,10 @@ function App() {
 
   const connectWebSocket = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Use explicit URL with port for worker dev server
-    const host = import.meta.env.DEV ? 'localhost:8787' : window.location.host;
+    // Use production Worker URL or localhost for development
+    const host = import.meta.env.DEV 
+      ? 'localhost:8787' 
+      : 'ai-code-reviewer.mohammedfirdousaraoye.workers.dev';
     const wsUrl = `${protocol}//${host}/agent`;
     
     const socket = new WebSocket(wsUrl);
