@@ -1,10 +1,10 @@
 # AI-Powered Code Reviewer & Explainer
 
-A real-time AI code review application built with Cloudflare's modern stack: Workers AI (Llama 3.3), Durable Objects, and Cloudflare Pages.
+A real-time AI code review application with **intelligent language detection** built with Cloudflare's modern stack: Workers AI (Llama 3.1), Durable Objects, and Cloudflare Pages.
 
 ## 🎉 Live Deployment
 
-- **🌐 Frontend**: https://db643ca2.ai-code-reviewer-5fq.pages.dev
+- **🌐 Frontend**: https://c26addb7.ai-code-reviewer-5fq.pages.dev
 - **⚡ Backend Worker**: https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev
 - **🔌 WebSocket**: wss://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/agent
 - **📚 API Docs**: https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api
@@ -12,7 +12,7 @@ A real-time AI code review application built with Cloudflare's modern stack: Wor
 ## 🚀 Quick Start (3 Ways)
 
 ### 1. Use Live App (Zero Setup!) 🌐
-Just visit: **https://db643ca2.ai-code-reviewer-5fq.pages.dev**
+Just visit: **https://c26addb7.ai-code-reviewer-5fq.pages.dev**
 
 Paste code, select review type, and watch AI analysis stream in real-time!
 
@@ -65,16 +65,20 @@ cd frontend && npm run deploy
 
 ## Features
 
-- **Real-time Code Analysis**: Stream AI responses as they're generated
-- **Multi-language Support**: JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#
-- **Review Categories**:
-  - Quick Review: Overall code quality assessment
-  - Security Audit: Vulnerability detection & OWASP analysis
-  - Performance Analysis: Optimization suggestions
-  - Documentation Review: Comment & doc improvements
-- **Stateful Conversations**: Maintains review history in SQLite-based Durable Objects
-- **WebSocket Communication**: Instant bidirectional updates
-- **Free Plan Compatible**: Uses SQLite-based Durable Objects for Cloudflare free tier
+- **🔍 Intelligent Language Detection**: Automatically detects programming languages and validates user selections
+- **🚫 Smart Code Validation**: Rejects non-code text and provides helpful language suggestions
+- **⚡ Real-time Code Analysis**: Stream AI responses as they're generated
+- **🌐 Multi-language Support**: JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#, PHP, Ruby, Swift, Kotlin
+- **📋 Review Categories**:
+  - 🚀 Quick Review: Overall code quality assessment
+  - 🔒 Security Audit: Vulnerability detection & OWASP analysis
+  - ⚡ Performance Analysis: Optimization suggestions
+  - 📚 Documentation Review: Comment & doc improvements
+- **💾 Stateful Conversations**: Maintains review history in SQLite-based Durable Objects
+- **🔌 WebSocket Communication**: Instant bidirectional updates
+- **💸 Free Plan Compatible**: Uses SQLite-based Durable Objects for Cloudflare free tier
+- **🛡️ Error Prevention**: Prevents duplicate reviews and handles empty responses
+- **🎯 Language-Specific Analysis**: Tailored feedback based on detected programming language
 
 ## Architecture
 
@@ -90,15 +94,16 @@ cd frontend && npm run deploy
 ┌─────────────────────────────────────────────┐
 │    Cloudflare Worker + Durable Objects      │
 │  - CodeReviewerAgent class                  │
-│  - State management                         │
+│  - Intelligent language detection           │
+│  - State management & validation            │
 │  - Multi-turn conversations                 │
 └──────────────┬──────────────────────────────┘
                │ AI Binding
                ▼
 ┌─────────────────────────────────────────────┐
 │  Cloudflare Workers AI                      │
-│  - Llama 3.3 70B (FP8 Fast)                 │
-│  - Streaming inference                      │
+│  - Llama 3.1 8B (Optimized & Reliable)     │
+│  - Non-streaming inference for stability    │
 └─────────────────────────────────────────────┘
 ```
 
@@ -193,7 +198,7 @@ npm run deploy
 
 The frontend is already deployed and connected to the production Worker!
 
-**Frontend URL**: https://db643ca2.ai-code-reviewer-5fq.pages.dev
+**Frontend URL**: https://c26addb7.ai-code-reviewer-5fq.pages.dev
 
 To redeploy or update:
 ```bash
@@ -350,11 +355,11 @@ Submit code for AI analysis via HTTP POST.
 {
   "code": "console.log('Hello World');",
   "category": "quick|security|performance|documentation",
-  "language": "javascript|typescript|python|java|go|rust|cpp|csharp"
+  "language": "javascript|typescript|python|java|go|rust|cpp|csharp|php|ruby|swift|kotlin|other"
 }
 ```
 
-**Response:**
+**Success Response:**
 ```json
 {
   "success": true,
@@ -366,6 +371,14 @@ Submit code for AI analysis via HTTP POST.
     "result": "AI analysis result...",
     "timestamp": 1760798282676
   }
+}
+```
+
+**Language Validation Error:**
+```json
+{
+  "success": false,
+  "error": "Code appears to be python but you selected javascript. Please select the correct language for accurate analysis.\n\n💡 Try selecting 'python' instead."
 }
 ```
 
@@ -431,8 +444,40 @@ Basic health check endpoint.
 // Completion
 { type: 'done', review: { id: string, code: string, result: string } }
 
-// Error
+// Language validation error
+{ type: 'language_error', error: string, suggestion?: string }
+
+// General error
 { type: 'error', error: string }
+```
+
+## 🧠 Language Detection Features
+
+### Intelligent Code Analysis
+- **Pattern Recognition**: Detects 10+ programming languages using syntax analysis
+- **Validation**: Prevents mismatched language selections
+- **Smart Suggestions**: Recommends correct language when mismatch detected
+- **Non-code Detection**: Identifies and rejects plain text submissions
+
+### Supported Languages
+- JavaScript/TypeScript
+- Python  
+- Java
+- Go
+- Rust
+- C++/C#
+- PHP
+- Ruby
+- Swift
+- Kotlin
+- Other/Unknown (for edge cases)
+
+### Example Validations
+```bash
+# Python code labeled as JavaScript → Rejected with suggestion
+# Plain text labeled as code → Rejected with explanation  
+# Multi-language code → Notes detected languages in review
+# Correct language match → Proceeds with optimized analysis
 ```
 
 ## Contributing
