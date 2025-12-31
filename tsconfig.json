@@ -15,6 +15,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/**/*"],
+  "include": ["worker/**/*"],
   "exclude": ["node_modules"]
 }
