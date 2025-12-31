@@ -1,7 +1,7 @@
 name = "ai-code-reviewer-backend"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
-main = "src/index.ts"
+main = "worker/index.ts"
 
 # Durable Object binding
 [[durable_objects.bindings]]
