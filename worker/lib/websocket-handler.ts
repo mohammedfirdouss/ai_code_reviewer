@@ -70,7 +70,7 @@ export class WebSocketHandler {
       
       if (!validation.isValid) {
         const errorMessage = validation.errorMessage || "Language validation failed";
-        const suggestion = validation.suggestion ? `\n\n💡 ${validation.suggestion}` : "";
+        const suggestion = validation.suggestion ? `\n\nSuggestion: ${validation.suggestion}` : "";
         
         ws.send(JSON.stringify({ 
           type: "language_error", 
