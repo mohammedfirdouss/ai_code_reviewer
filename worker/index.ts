@@ -5,6 +5,9 @@ import { RateLimiterService } from './lib/rate-limiter';
 import { DatabaseService } from './lib/database-service';
 import { StorageService } from './lib/storage-service';
 import { MultiModelService } from './lib/multi-model-service';
+import { SlackBotService } from './lib/slack-bot-service';
+import { VectorEmbeddingsService } from './lib/vector-embeddings-service';
+import { AdvancedAnalyticsService } from './lib/advanced-analytics-service';
 
 export { CodeReviewerAgent };
 
@@ -95,6 +98,31 @@ export default {
       // NEW: Rate limit status endpoint
       if (url.pathname === '/api/ratelimit/status' && request.method === 'GET') {
         return await this.handleRateLimitStatus(request, env, corsHeaders);
+      }
+
+      // NEW: Slack webhook endpoint
+      if (url.pathname === '/api/slack/events' && request.method === 'POST') {
+        return await this.handleSlackEvent(request, env, corsHeaders);
+      }
+
+      // NEW: Vector search endpoint
+      if (url.pathname === '/api/search' && request.method === 'POST') {
+        return await this.handleVectorSearch(request, env, corsHeaders);
+      }
+
+      // NEW: Recommendations endpoint
+      if (url.pathname === '/api/recommendations' && request.method === 'POST') {
+        return await this.handleRecommendations(request, env, corsHeaders);
+      }
+
+      // NEW: Analytics dashboard endpoint
+      if (url.pathname === '/api/dashboard' && request.method === 'GET') {
+        return await this.handleDashboard(request, env, corsHeaders);
+      }
+
+      // NEW: Export data endpoint
+      if (url.pathname === '/api/export' && request.method === 'GET') {
+        return await this.handleExportData(request, env, corsHeaders);
       }
 
       // NEW: Feedback endpoint
@@ -378,6 +406,164 @@ export default {
         success: false, 
         error: error instanceof Error ? error.message : 'AI test failed',
         message: "AI binding issue detected"
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Handle Slack webhook events
+   */
+  async handleSlackEvent(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const event = await request.json();
+      const slackService = new SlackBotService(env);
+      
+      return await slackService.handleSlackEvent(event);
+      
+    } catch (error) {
+      console.error('Slack event error:', error);
+      return new Response('Error', { 
+        status: 500, 
+        headers: corsHeaders 
+      });
+    }
+  },
+
+  /**
+   * Handle vector search requests
+   */
+  async handleVectorSearch(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const { query, language, topK = 5 } = await request.json();
+      
+      if (!env.VECTORIZE) {
+        throw new Error('Vectorize not configured');
+      }
+
+      const vectorService = new VectorEmbeddingsService(env.VECTORIZE);
+      const results = await vectorService.searchCode(query, language, undefined, topK);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        results
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+
+    } catch (error: any) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: error.message
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Handle recommendations requests
+   */
+  async handleRecommendations(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const { code, language, category = 'quick' } = await request.json();
+      
+      if (!env.VECTORIZE) {
+        throw new Error('Vectorize not configured');
+      }
+
+      const vectorService = new VectorEmbeddingsService(env.VECTORIZE);
+      const recommendations = await vectorService.getRecommendations(code, language, category);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        recommendations
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+
+    } catch (error: any) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: error.message
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Handle analytics dashboard requests
+   */
+  async handleDashboard(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const url = new URL(request.url);
+      const timeRange = parseInt(url.searchParams.get('days') || '30');
+      
+      if (!env.DB || !env.VECTORIZE) {
+        throw new Error('Database or Vectorize not configured');
+      }
+
+      const vectorService = new VectorEmbeddingsService(env.VECTORIZE);
+      const analyticsService = new AdvancedAnalyticsService(env.DB, vectorService);
+      
+      const dashboard = await analyticsService.getDashboard(timeRange);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        dashboard
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+
+    } catch (error: any) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: error.message
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Handle data export requests
+   */
+  async handleExportData(request: any, env: Env, corsHeaders: Record<string, string>) {
+    try {
+      const url = new URL(request.url);
+      const format = url.searchParams.get('format') || 'json';
+      const timeRange = parseInt(url.searchParams.get('days') || '30');
+      
+      if (!env.DB || !env.VECTORIZE) {
+        throw new Error('Database or Vectorize not configured');
+      }
+
+      const vectorService = new VectorEmbeddingsService(env.VECTORIZE);
+      const analyticsService = new AdvancedAnalyticsService(env.DB, vectorService);
+      
+      const data = await analyticsService.exportData(format as 'json' | 'csv', timeRange);
+      
+      const contentType = format === 'csv' ? 'text/csv' : 'application/json';
+      const filename = `ai-code-review-export-${new Date().toISOString().split('T')[0]}.${format}`;
+      
+      return new Response(data, {
+        headers: { 
+          'Content-Type': contentType,
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          ...corsHeaders 
+        }
+      });
+
+    } catch (error: any) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: error.message
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
