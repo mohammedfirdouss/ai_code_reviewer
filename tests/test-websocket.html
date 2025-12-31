@@ -75,9 +75,9 @@
     </style>
 </head>
 <body>
-    <h1>🤖 AI Code Reviewer - WebSocket Test</h1>
+    <h1>AI Code Reviewer - WebSocket Test</h1>
     
-    <div id="status" class="status disconnected">⚫ Disconnected</div>
+    <div id="status" class="status disconnected">Disconnected</div>
     
     <h3>Test Code:</h3>
     <textarea id="codeInput">function greet(name) {
@@ -95,9 +95,9 @@
         </select>
     </div>
     
-    <button class="primary" onclick="connect()">🔌 Connect</button>
-    <button class="primary" onclick="submitCode()">📝 Review Code</button>
-    <button class="secondary" onclick="clearOutput()">🗑️ Clear</button>
+    <button class="primary" onclick="connect()">Connect</button>
+    <button class="primary" onclick="submitCode()">Review Code</button>
+    <button class="secondary" onclick="clearOutput()">Clear</button>
     
     <h3>Output:</h3>
     <div id="output"></div>
@@ -110,10 +110,10 @@
             const statusDiv = document.getElementById('status');
             if (connected) {
                 statusDiv.className = 'status connected';
-                statusDiv.textContent = '🟢 Connected';
+                statusDiv.textContent = 'Connected';
             } else {
                 statusDiv.className = 'status disconnected';
-                statusDiv.textContent = '⚫ Disconnected';
+                statusDiv.textContent = 'Disconnected';
             }
         }
         
@@ -140,7 +140,7 @@
             
             ws.onopen = () => {
                 updateStatus(true);
-                addMessage('system', '✅ Connected successfully!');
+                addMessage('system', 'Connected successfully!');
             };
             
             ws.onmessage = (event) => {
@@ -152,13 +152,13 @@
                             addMessage('agent', data.text || data.stage);
                             break;
                         case 'done':
-                            addMessage('system', `✅ Review completed (ID: ${data.review.id})`);
+                            addMessage('system', `Review completed (ID: ${data.review.id})`);
                             break;
                         case 'error':
-                            addMessage('error', `❌ Error: ${data.error}`);
+                            addMessage('error', `Error: ${data.error}`);
                             break;
                         case 'pong':
-                            addMessage('system', '🏓 Pong received');
+                            addMessage('system', 'Pong received');
                             break;
                         default:
                             addMessage('system', JSON.stringify(data));
@@ -169,19 +169,19 @@
             };
             
             ws.onerror = (error) => {
-                addMessage('error', '❌ WebSocket error occurred');
+                addMessage('error', 'WebSocket error occurred');
                 updateStatus(false);
             };
             
             ws.onclose = (event) => {
-                addMessage('system', `🔌 Connection closed (Code: ${event.code})`);
+                addMessage('system', `Connection closed (Code: ${event.code})`);
                 updateStatus(false);
             };
         }
         
         function submitCode() {
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                addMessage('error', '❌ Not connected! Click Connect first.');
+                addMessage('error', 'Not connected! Click Connect first.');
                 return;
             }
             
@@ -189,7 +189,7 @@
             const category = document.getElementById('category').value;
             
             if (!code.trim()) {
-                addMessage('error', '❌ Please enter some code to review');
+                addMessage('error', 'Please enter some code to review');
                 return;
             }
             
@@ -200,7 +200,7 @@
                 language: 'javascript'
             };
             
-            addMessage('user', `📤 Submitting code for ${category} review...`);
+            addMessage('user', `Submitting code for ${category} review...`);
             ws.send(JSON.stringify(message));
         }
         

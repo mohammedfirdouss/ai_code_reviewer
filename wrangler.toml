@@ -4,3 +4,44 @@ compatibility_flags = ["nodejs_compat"]
 
 # Pages build output directory (static frontend)
 pages_build_output_dir = "frontend/dist"
+
+# === CLOUDFLARE BINDINGS ===
+
+# Workers AI binding for LLM access
+[ai]
+binding = "AI"
+
+# Durable Objects for stateful sessions
+[[durable_objects.bindings]]
+name = "CODE_REVIEWER_AGENT"
+class_name = "CodeReviewerAgent"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CodeReviewerAgent"]
+
+# KV Namespace for caching review results
+[[kv_namespaces]]
+binding = "REVIEW_CACHE"
+id = "review-cache-namespace"
+
+# KV Namespace for rate limiting
+[[kv_namespaces]]
+binding = "RATE_LIMITER"
+id = "rate-limiter-namespace"
+
+# D1 Database for analytics and persistent storage
+[[d1_databases]]
+binding = "DB"
+database_name = "ai-code-reviewer-db"
+database_id = "ai-code-reviewer-db"
+
+# R2 Bucket for code storage
+[[r2_buckets]]
+binding = "CODE_STORAGE"
+bucket_name = "ai-code-reviewer-storage"
+
+# Vectorize for code embeddings (semantic search)
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "code-embeddings"

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Post-deployment verification script
-echo "🔍 AI Code Reviewer - Post-deployment Verification"
+echo "AI Code Reviewer - Post-deployment Verification"
 echo "================================================="
 
 # Colors
@@ -24,34 +24,34 @@ fi
 WORKER_URL=$(echo $WORKER_URL | sed 's/\/$//')
 
 echo ""
-echo "🧪 Testing deployed Worker..."
+echo "Testing deployed Worker..."
 
 # Test 1: Health check
 echo -n "Testing health endpoint... "
 health_response=$(curl -s -w "%{http_code}" "$WORKER_URL/health" -o /tmp/health_response.json)
 if [ "$health_response" = "200" ]; then
-    echo -e "${GREEN}✅ Health check passed${NC}"
+    echo -e "${GREEN}Health check passed${NC}"
     echo "   Response: $(cat /tmp/health_response.json)"
 else
-    echo -e "${RED}❌ Health check failed (HTTP $health_response)${NC}"
+    echo -e "${RED}Health check failed (HTTP $health_response)${NC}"
 fi
 
 # Test 2: CORS headers
 echo -n "Testing CORS headers... "
 cors_headers=$(curl -s -I "$WORKER_URL/health" | grep -i "access-control-allow-origin")
 if [ ! -z "$cors_headers" ]; then
-    echo -e "${GREEN}✅ CORS headers present${NC}"
+    echo -e "${GREEN}CORS headers present${NC}"
 else
-    echo -e "${RED}❌ CORS headers missing${NC}"
+    echo -e "${RED}CORS headers missing${NC}"
 fi
 
 # Test 3: Agent endpoint
 echo -n "Testing agent endpoint... "
 agent_response=$(curl -s -w "%{http_code}" "$WORKER_URL/agent/status" -o /tmp/agent_response.json)
 if [ "$agent_response" = "200" ]; then
-    echo -e "${GREEN}✅ Agent endpoint accessible${NC}"
+    echo -e "${GREEN}Agent endpoint accessible${NC}"
 else
-    echo -e "${YELLOW}⚠️  Agent endpoint returned HTTP $agent_response${NC}"
+    echo -e "${YELLOW}Agent endpoint returned HTTP $agent_response${NC}"
 fi
 
 # Test 4: Security headers

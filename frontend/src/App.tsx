@@ -249,13 +249,13 @@ function App() {
           });
           
           if (validReviews.length === 0) {
-            addMessage('system', '📋 No past reviews found. Your reviews will appear here once you submit code for analysis.');
+            addMessage('system', 'No past reviews found. Your reviews will appear here once you submit code for analysis.');
           } else {
-            addMessage('system', `📋 Found ${validReviews.length} review(s). Check the "Reviews" tab to see them.`);
+            addMessage('system', `Found ${validReviews.length} review(s). Check the "Reviews" tab to see them.`);
             setActiveTab('reviews');
           }
         } catch (e) {
-          addMessage('system', '❌ Failed to load reviews');
+          addMessage('system', 'Failed to load reviews');
         }
         break;
       case 'done':
@@ -283,15 +283,15 @@ function App() {
         break;
       case 'language_error':
         setStreaming(false);
-        addMessage('system', `🔍 Language Detection Issue: ${data.error}`);
+        addMessage('system', `Language Detection Issue: ${data.error}`);
         if (data.suggestion) {
-          addMessage('system', `💡 ${data.suggestion}`);
+          addMessage('system', `Suggestion: ${data.suggestion}`);
         }
         showToast('Language mismatch detected', 'error');
         break;
       case 'error':
         setStreaming(false);
-        addMessage('system', `❌ Error: ${data.error}`);
+        addMessage('system', `Error: ${data.error}`);
         showToast(data.error, 'error');
         break;
       case 'pong':
@@ -583,10 +583,10 @@ function App() {
                         onChange={(e) => setCategory(e.target.value as any)}
                         className="form-select"
                       >
-                        <option value="quick">🚀 Quick Review</option>
-                        <option value="security">🔒 Security Audit</option>
-                        <option value="performance">⚡ Performance Analysis</option>
-                        <option value="documentation">📚 Documentation Review</option>
+                        <option value="quick">Quick Review</option>
+                        <option value="security">Security Audit</option>
+                        <option value="performance">Performance Analysis</option>
+                        <option value="documentation">Documentation Review</option>
                       </select>
                     </div>
                   </div>

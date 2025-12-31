@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Pre-deployment check script for Cloudflare Workers
-echo "🚀 AI Code Reviewer - Pre-deployment Check"
+echo "AI Code Reviewer - Pre-deployment Check"
 echo "=========================================="
 
 # Colors for output
@@ -13,9 +13,9 @@ NC='\033[0m' # No Color
 # Function to print status
 print_status() {
     if [ $2 -eq 0 ]; then
-        echo -e "${GREEN}✅ $1${NC}"
+        echo -e "${GREEN}$1${NC}"
     else
-        echo -e "${RED}❌ $1${NC}"
+        echo -e "${RED}$1${NC}"
     fi
 }
 
@@ -86,7 +86,7 @@ npm run build >/dev/null 2>&1 || true  # Allow this to fail
 print_status "Build test completed" 0
 
 echo ""
-echo "📋 Deployment Checklist:"
+echo "Deployment Checklist:"
 echo "1. Copy .env.example to .env: cp .env.example .env"
 echo "2. Update CLOUDFLARE_ACCOUNT_ID in .env with your Account ID"
 echo "3. Update CLOUDFLARE_API_TOKEN in .env (optional, for CI/CD)"

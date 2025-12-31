@@ -1,5 +1,10 @@
 import { Env } from './types';
 import { CodeReviewerAgent } from './agent';
+import { CacheService } from './lib/cache-service';
+import { RateLimiterService } from './lib/rate-limiter';
+import { DatabaseService } from './lib/database-service';
+import { StorageService } from './lib/storage-service';
+import { MultiModelService } from './lib/multi-model-service';
 
 export { CodeReviewerAgent };
 
@@ -7,6 +12,7 @@ export { CodeReviewerAgent };
  * AI Code Reviewer Worker
  * 
  * This worker routes requests to the Durable Object agent and handles CORS.
+ * Enhanced with caching, rate limiting, database storage, and multi-model AI.
  */
 export default {
   /**
@@ -19,6 +25,27 @@ export default {
     // Handle preflight CORS requests
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
+    }
+
+    // Apply rate limiting (skip for health checks)
+    if (!['/', '/health', '/api'].includes(url.pathname)) {
+      const rateLimitResult = await this.checkRateLimit(request, env);
+      if (!rateLimitResult.allowed) {
+        return new Response(JSON.stringify({
+          error: 'Rate limit exceeded',
+          retryAfter: rateLimitResult.retryAfter,
+          remaining: rateLimitResult.remaining
+        }), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(rateLimitResult.retryAfter || 60),
+            'X-RateLimit-Remaining': String(rateLimitResult.remaining),
+            'X-RateLimit-Reset': String(rateLimitResult.resetAt),
+            ...corsHeaders
+          }
+        });
+      }
     }
 
     try {
@@ -43,6 +70,36 @@ export default {
 
       if (url.pathname === '/api/status' && request.method === 'GET') {
         return await this.handleStatus(request, env, corsHeaders);
+      }
+
+      // NEW: Analytics endpoint
+      if (url.pathname === '/api/analytics' && request.method === 'GET') {
+        return await this.handleAnalytics(request, env, corsHeaders);
+      }
+
+      // NEW: Models endpoint
+      if (url.pathname === '/api/models' && request.method === 'GET') {
+        return this.handleModels(env, corsHeaders);
+      }
+
+      // NEW: Categories endpoint
+      if (url.pathname === '/api/categories' && request.method === 'GET') {
+        return this.handleCategories(corsHeaders);
+      }
+
+      // NEW: Cache stats endpoint
+      if (url.pathname === '/api/cache/stats' && request.method === 'GET') {
+        return await this.handleCacheStats(env, corsHeaders);
+      }
+
+      // NEW: Rate limit status endpoint
+      if (url.pathname === '/api/ratelimit/status' && request.method === 'GET') {
+        return await this.handleRateLimitStatus(request, env, corsHeaders);
+      }
+
+      // NEW: Feedback endpoint
+      if (url.pathname === '/api/feedback' && request.method === 'POST') {
+        return await this.handleFeedback(request, env, corsHeaders);
       }
 
       // API documentation endpoint

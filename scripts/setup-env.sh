@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Environment setup script for AI Code Reviewer
-echo "🔧 AI Code Reviewer - Environment Setup"
+echo "AI Code Reviewer - Environment Setup"
 echo "======================================"
 
 # Colors
@@ -12,7 +12,7 @@ NC='\033[0m'
 
 # Check if .env already exists
 if [ -f ".env" ]; then
-    echo -e "${YELLOW}⚠️  .env file already exists${NC}"
+    echo -e "${YELLOW}.env file already exists${NC}"
     echo -n "Do you want to overwrite it? (y/N): "
     read -r response
     if [[ ! "$response" =~ ^[Yy]$ ]]; then
@@ -24,14 +24,14 @@ fi
 # Copy .env.example to .env
 echo -n "Creating .env file... "
 if cp .env.example .env; then
-    echo -e "${GREEN}✅ Done${NC}"
+    echo -e "${GREEN}Done${NC}"
 else
-    echo -e "${RED}❌ Failed to create .env file${NC}"
+    echo -e "${RED}Failed to create .env file${NC}"
     exit 1
 fi
 
 echo ""
-echo -e "${BLUE}📝 Please update the .env file with your Cloudflare credentials:${NC}"
+echo -e "${BLUE}Please update the .env file with your Cloudflare credentials:${NC}"
 echo ""
 echo "1. CLOUDFLARE_ACCOUNT_ID - Get from Cloudflare dashboard (right sidebar)"
 echo "2. CLOUDFLARE_API_TOKEN - Create at My Profile → API Tokens"
