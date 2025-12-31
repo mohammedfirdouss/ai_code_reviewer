@@ -39,6 +39,7 @@ build/Release
 
 # Dependency directories
 node_modules/
+**/node_modules/
 jspm_packages/
 
 # Snowpack dependency directory (https://snowpack.dev/)
@@ -81,6 +82,9 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+**/dist/
+frontend/dist/
+frontend/.vite/
 
 # Gatsby files
 .cache/
@@ -140,3 +144,17 @@ vite.config.ts.timestamp-*
 
 # Wrangler
 .wrangler/
+
+# Build outputs
+*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

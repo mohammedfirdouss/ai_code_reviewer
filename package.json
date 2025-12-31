@@ -11,9 +11,9 @@
     "deploy:all": "npm run deploy:prod && npm run deploy:pages",
     "dev:frontend": "npm run dev --prefix frontend",
     "build:frontend": "npm run build --prefix frontend",
-    "setup": "./setup-env.sh",
-    "check": "./pre-deploy-check.sh",
-    "verify": "./verify-deployment.sh",
+    "setup": "./scripts/setup-env.sh",
+    "check": "./scripts/pre-deploy-check.sh",
+    "verify": "./scripts/verify-deployment.sh",
     "logs": "wrangler tail",
     "logs:prod": "wrangler tail --config wrangler.prod.toml",
     "preview": "wrangler dev --remote"
