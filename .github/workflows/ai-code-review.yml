@@ -1,0 +1,215 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**/*.js'
+      - '**/*.jsx' 
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.py'
+      - '**/*.java'
+      - '**/*.c'
+      - '**/*.cpp'
+      - '**/*.cs'
+      - '**/*.go'
+      - '**/*.rs'
+      - '**/*.php'
+      - '**/*.rb'
+      - '**/*.swift'
+      - '**/*.kt'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai-code-review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install AI Code Reviewer CLI
+        run: |
+          npm install -g ai-code-reviewer-cli
+          
+      - name: Get changed files
+        id: changed-files
+        run: |
+          # Get list of changed files in the PR
+          git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} > changed_files.txt
+          
+          # Filter for code files
+          grep -E '\.(js|jsx|ts|tsx|py|java|c|cpp|cs|go|rs|php|rb|swift|kt)$' changed_files.txt > code_files.txt || true
+          
+          if [ -s code_files.txt ]; then
+            echo "has-code-changes=true" >> $GITHUB_OUTPUT
+            echo "Files to review:"
+            cat code_files.txt
+          else
+            echo "has-code-changes=false" >> $GITHUB_OUTPUT
+            echo "No code files changed"
+          fi
+
+      - name: Review changed code files
+        if: steps.changed-files.outputs.has-code-changes == 'true'
+        env:
+          API_ENDPOINT: ${{ vars.AI_CODE_REVIEWER_ENDPOINT || 'https://ai-code-reviewer.pages.dev' }}
+        run: |
+          # Initialize review results
+          mkdir -p review-results
+          echo "# 🤖 AI Code Review Results" > review-results/summary.md
+          echo "" >> review-results/summary.md
+          
+          # Track review statistics
+          total_files=0
+          files_with_issues=0
+          
+          # Review each changed file
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              echo "Reviewing $file..."
+              total_files=$((total_files + 1))
+              
+              # Run AI review
+              ai-code-reviewer review "$file" --category security --json > "review-results/${file//\//_}.json" || {
+                echo "Error reviewing $file" >&2
+                continue
+              }
+              
+              # Parse results
+              confidence=$(jq -r '.confidence' "review-results/${file//\//_}.json")
+              review_text=$(jq -r '.review' "review-results/${file//\//_}.json")
+              model=$(jq -r '.model' "review-results/${file//\//_}.json")
+              
+              # Add to summary
+              echo "## 📄 \`$file\`" >> review-results/summary.md
+              echo "**Model:** $model | **Confidence:** ${confidence}%" >> review-results/summary.md
+              echo "" >> review-results/summary.md
+              echo "$review_text" >> review-results/summary.md
+              echo "" >> review-results/summary.md
+              echo "---" >> review-results/summary.md
+              echo "" >> review-results/summary.md
+              
+              # Check if issues were found
+              if echo "$review_text" | grep -qi "issue\|problem\|bug\|vulnerability\|security"; then
+                files_with_issues=$((files_with_issues + 1))
+              fi
+              
+            fi
+          done < code_files.txt
+          
+          # Add summary statistics
+          {
+            echo ""
+            echo "## 📊 Summary"
+            echo "- **Files reviewed:** $total_files"
+            echo "- **Files with potential issues:** $files_with_issues"
+            if [ $files_with_issues -eq 0 ]; then
+              echo "- **Status:** ✅ No major issues found!"
+            else
+              echo "- **Status:** ⚠️ Please review the flagged issues"
+            fi
+          } >> review-results/summary.md
+
+      - name: Comment PR with review results
+        if: steps.changed-files.outputs.has-code-changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Read review summary
+            const summaryPath = 'review-results/summary.md';
+            if (!fs.existsSync(summaryPath)) {
+              console.log('No review summary found');
+              return;
+            }
+            
+            const reviewSummary = fs.readFileSync(summaryPath, 'utf8');
+            
+            // Find existing AI review comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const existingComment = comments.data.find(
+              comment => comment.body.includes('🤖 AI Code Review Results')
+            );
+            
+            if (existingComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: reviewSummary
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: reviewSummary
+              });
+            }
+
+      - name: Set PR status
+        if: steps.changed-files.outputs.has-code-changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            // Count files with issues from review results
+            let filesWithIssues = 0;
+            try {
+              const summaryContent = fs.readFileSync('review-results/summary.md', 'utf8');
+              const match = summaryContent.match(/Files with potential issues:\*\* (\d+)/);
+              if (match) {
+                filesWithIssues = parseInt(match[1]);
+              }
+            } catch (error) {
+              console.log('Could not parse review results');
+            }
+            
+            // Set commit status
+            const state = filesWithIssues === 0 ? 'success' : 'failure';
+            const description = filesWithIssues === 0 
+              ? 'No major issues found by AI code review'
+              : `${filesWithIssues} files have potential issues`;
+            
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: state,
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: description,
+              context: 'AI Code Review'
+            });
+
+      - name: Upload review artifacts
+        if: steps.changed-files.outputs.has-code-changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-results
+          path: review-results/
+          retention-days: 30

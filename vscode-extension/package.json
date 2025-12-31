@@ -1,0 +1,133 @@
+{
+  "name": "ai-code-reviewer-vscode",
+  "displayName": "AI Code Reviewer",
+  "description": "AI-powered code review directly in VS Code",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other", "Linters"],
+  "keywords": ["ai", "code-review", "analysis", "quality"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiCodeReviewer.reviewFile",
+        "title": "AI: Review Current File",
+        "icon": "$(robot)"
+      },
+      {
+        "command": "aiCodeReviewer.reviewSelection",
+        "title": "AI: Review Selection",
+        "icon": "$(search)"
+      },
+      {
+        "command": "aiCodeReviewer.reviewWorkspace",
+        "title": "AI: Review Workspace",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "aiCodeReviewer.showReviewPanel",
+        "title": "AI: Show Review Panel",
+        "icon": "$(output)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "editorHasSelection",
+          "command": "aiCodeReviewer.reviewSelection",
+          "group": "aiCodeReviewer"
+        },
+        {
+          "command": "aiCodeReviewer.reviewFile",
+          "group": "aiCodeReviewer"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "aiCodeReviewer.reviewFile",
+          "when": "resourceExtname =~ /\\.(js|jsx|ts|tsx|py|java|c|cpp|cs|go|rs|php|rb|swift|kt)$/",
+          "group": "navigation@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "aiCodeReviewer.reviewFile",
+          "when": "resourceExtname =~ /\\.(js|jsx|ts|tsx|py|java|c|cpp|cs|go|rs|php|rb|swift|kt)$/",
+          "group": "aiCodeReviewer"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Code Reviewer",
+      "properties": {
+        "aiCodeReviewer.apiEndpoint": {
+          "type": "string",
+          "default": "https://ai-code-reviewer.pages.dev",
+          "description": "API endpoint for AI Code Reviewer service"
+        },
+        "aiCodeReviewer.defaultCategory": {
+          "type": "string",
+          "enum": ["quick", "security", "performance", "documentation"],
+          "default": "quick",
+          "description": "Default review category"
+        },
+        "aiCodeReviewer.autoReview": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically review files on save"
+        },
+        "aiCodeReviewer.showInlineDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline decorations for review suggestions"
+        }
+      }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "aiCodeReviewerPanel",
+          "name": "AI Code Review",
+          "when": "aiCodeReviewer.hasReviews"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "aiCodeReviewerPanel",
+        "contents": "No reviews yet.\n[Review Current File](command:aiCodeReviewer.reviewFile)\n[Review Selection](command:aiCodeReviewer.reviewSelection)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "16.x",
+    "@typescript-eslint/eslint-plugin": "^6.4.1",
+    "@typescript-eslint/parser": "^6.4.1",
+    "eslint": "^8.47.0",
+    "typescript": "^5.1.6",
+    "webpack": "^5.88.0",
+    "webpack-cli": "^5.1.4",
+    "ts-loader": "^9.4.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohammedfirdouss/ai_code_reviewer.git"
+  },
+  "author": "AI Code Reviewer Team",
+  "license": "MIT"
+}
