@@ -49,36 +49,6 @@ Leverage built-in Agent state (`this.setState()`) to persist:
 
 Use the Agent's built-in SQL database to store and query past reviews. Implement state synchronization between Agent and client using the `useAgent` hook.
 
-## Technical Architecture
-
-```
-┌─────────────────────────────────────────────┐
-│     Cloudflare Pages (Frontend)             │
-│  - Chat UI for code submission              │
-│  - Real-time message display                │
-│  - Voice input integration                  │
-│  - Conversation history                     │
-└──────────────┬──────────────────────────────┘
-               │ WebSocket
-               │ (Real-time, bidirectional)
-               ▼
-┌─────────────────────────────────────────────┐
-│    Cloudflare Agents (Durable Objects)      │
-│  - Agent class managing code review logic   │
-│  - State management (conversation, reviews) │
-│  - Multi-turn conversation coordination     │
-│  - Built-in SQL for persistence             │
-└──────────────┬──────────────────────────────┘
-               │ API calls
-               ▼
-┌─────────────────────────────────────────────┐
-│  Cloudflare Workers AI                      │
-│  - Llama 3.3 model inference                │
-│  - Code analysis & review                   │
-│  - Streaming responses                      │
-└─────────────────────────────────────────────┘
-```
-
 ## Key Features to Implement
 
 **Multi-language Code Support:** Detect and review code in Python, JavaScript, Java, C++, Go, Rust, and other languages.
