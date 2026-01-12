@@ -2,22 +2,19 @@
 
 A modern, real-time AI code review application with intelligent language detection, built on Cloudflare's edge computing platform. Get instant code analysis, security audits, performance insights, and documentation suggestions powered by Llama 3.1.
 
-## ✨ Features
+## Features
 
-- **🔍 Intelligent Language Detection** - Automatically detects and validates programming languages
-- **⚡ Real-time Streaming** - Watch AI analysis stream in real-time as it's generated
-- **🌐 Multi-language Support** - JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#, PHP, Ruby, Swift, Kotlin
-- **📋 Review Categories**:
-  - 🚀 **Quick Review** - Overall code quality assessment
-  - 🔒 **Security Audit** - Vulnerability detection & OWASP analysis
-  - ⚡ **Performance Analysis** - Optimization suggestions
-  - 📚 **Documentation Review** - Comment & documentation improvements
-- **💾 Review History** - Search, filter, and export your past reviews
-- **🎨 Modern UI** - Dark mode, syntax highlighting, keyboard shortcuts
-- **📊 Statistics Dashboard** - Track your review activity and insights
-- **🛡️ Smart Validation** - Prevents errors and provides helpful suggestions
+- ** Intelligent Language Detection** - Automatically detects and validates programming languages
+- ** Real-time Streaming** - Watch AI analysis stream in real-time as it's generated
+- ** Multi-language Support** - JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#, PHP, Ruby, Swift, Kotlin
 
-## 🚀 Quick Start
+- ** Review Categories**:
+  - **Quick Review** - Overall code quality assessment
+  - **Security Audit** - Vulnerability detection & OWASP analysis
+  - **Performance Analysis** - Optimization suggestions
+  - **Documentation Review** - Comment & documentation improvements
+
+## Quick Start
 
 ### Option 1: Use the Live Application
 
@@ -70,7 +67,7 @@ curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/revi
 curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/status
 ```
 
-## 📖 API Reference
+## API Reference
 
 ### Endpoints
 
@@ -126,66 +123,8 @@ The application also supports WebSocket connections for real-time streaming. Con
 }
 ```
 
-## 🏗️ Architecture
 
-```
-┌─────────────────────────────────────┐
-│   Frontend (React + Vite)          │
-│   - Modern UI with dark mode       │
-│   - Real-time streaming display    │
-│   - Review history & search        │
-└──────────────┬──────────────────────┘
-               │ WebSocket / HTTP
-               ▼
-┌─────────────────────────────────────┐
-│   Cloudflare Worker                 │
-│   - Durable Objects for state       │
-│   - Language detection              │
-│   - Request validation              │
-└──────────────┬──────────────────────┘
-               │ AI Binding
-               ▼
-┌─────────────────────────────────────┐
-│   Cloudflare Workers AI             │
-│   - Llama 3.1 8B Model              │
-└─────────────────────────────────────┘
-```
-
-## 📁 Project Structure
-
-```
-ai_code_reviewer/
-├── worker/                       # Cloudflare Worker backend
-│   ├── index.ts                 # Worker entry point
-│   ├── agent.ts                 # Durable Object Agent
-│   ├── types.ts                 # TypeScript definitions
-│   └── lib/
-│       ├── code-review-service.ts
-│       └── websocket-handler.ts
-├── frontend/                     # React frontend application
-│   ├── src/
-│   │   ├── App.tsx              # Main component
-│   │   ├── App.css              # Styles
-│   │   └── main.tsx             # Entry point
-│   ├── package.json
-│   └── vite.config.ts
-├── scripts/                      # Deployment & utility scripts
-│   ├── setup-env.sh             # Environment setup
-│   ├── pre-deploy-check.sh      # Pre-deployment validation
-│   └── verify-deployment.sh     # Post-deployment verification
-├── tests/                        # Test files
-│   └── test-websocket.html      # WebSocket test utility
-├── docs/                         # Documentation
-│   └── PROMPT.md                # Project prompt/requirements
-├── config/                       # Configuration files
-│   ├── wrangler.workers.toml    # Worker configuration
-│   └── wrangler.pages.toml      # Pages configuration
-├── wrangler.toml                 # Main Worker config
-├── package.json                  # Backend dependencies
-└── tsconfig.json                 # TypeScript configuration
-```
-
-## 🛠️ Development
+## Development
 
 ### Prerequisites
 
@@ -226,7 +165,7 @@ ai_code_reviewer/
 3. Select a review category
 4. Click "Review Code" to see streaming AI analysis
 
-## 🚢 Deployment
+## Deployment
 
 ### Backend (Cloudflare Worker)
 
@@ -260,7 +199,7 @@ npm run logs
 npm run verify
 ```
 
-## 🧠 Language Detection
+## Language Detection
 
 The application intelligently detects programming languages using pattern recognition:
 
@@ -273,12 +212,12 @@ The application intelligently detects programming languages using pattern recogn
 
 JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#, PHP, Ruby, Swift, Kotlin, and more.
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 - `Ctrl/Cmd + K` - Focus code input
 - `Ctrl/Cmd + Enter` - Submit review
 
-## 🔧 Configuration
+## Configuration
 
 ### Worker Configuration (`wrangler.toml`)
 
@@ -295,17 +234,10 @@ CLOUDFLARE_ACCOUNT_ID=your-account-id
 CLOUDFLARE_API_TOKEN=your-api-token
 ```
 
-## 📚 Resources
+## Resources
 
 - [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
 - [Durable Objects](https://developers.cloudflare.com/durable-objects/)
 - [Cloudflare Pages](https://developers.cloudflare.com/pages/)
 - [Workers AI Models](https://developers.cloudflare.com/workers-ai/models/)
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-This project is open source and available under the MIT License.
