@@ -20,8 +20,6 @@ A modern, real-time AI code review application with intelligent language detecti
 
 Visit the deployed application: **[https://ai-code-reviewer-5fq.pages.dev](https://ai-code-reviewer-5fq.pages.dev)**
 
-No setup required - just paste your code and get instant AI-powered reviews!
-
 ### Option 2: Local Development
 
 ```bash
