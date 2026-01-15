@@ -4,11 +4,11 @@ A modern, real-time AI code review application with intelligent language detecti
 
 ## Features
 
-- ** Intelligent Language Detection** - Automatically detects and validates programming languages
-- ** Real-time Streaming** - Watch AI analysis stream in real-time as it's generated
-- ** Multi-language Support** - JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#, PHP, Ruby, Swift, Kotlin
+- **Intelligent Language Detection** - Automatically detects and validates programming languages
+- **Real-time Streaming** - Watch AI analysis stream in real-time as it's generated
+- **Multi-language Support** - JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#, PHP, Ruby, Swift, Kotlin
 
-- ** Review Categories**:
+- **Review Categories**:
   - **Quick Review** - Overall code quality assessment
   - **Security Audit** - Vulnerability detection & OWASP analysis
   - **Performance Analysis** - Optimization suggestions
