@@ -69,6 +69,7 @@ Worker: `http://localhost:8787`
 
 ---
 
+
 ## WebSocket Protocol
 
 Connect to `/agent` and send JSON messages:
