@@ -20,36 +20,36 @@ tag = "v1"
 new_sqlite_classes = ["CodeReviewerAgent"]
 
 # === OPTIONAL BINDINGS ===
-# The worker fails open when these are absent — no crash, just reduced features.
-# Replace placeholder IDs with real ones after creating each resource.
-
+# Cloudflare validates all bindings at deploy time, so only uncomment a section
+# once you have created the real resource and have its ID.
+#
 # KV — review result caching
-# Create: wrangler kv:namespace create REVIEW_CACHE
-[[kv_namespaces]]
-binding = "REVIEW_CACHE"
-id = "REPLACE_WITH_REAL_KV_ID"
-
+#   Create: wrangler kv:namespace create REVIEW_CACHE
+# [[kv_namespaces]]
+# binding = "REVIEW_CACHE"
+# id = "REPLACE_WITH_REAL_KV_ID"
+#
 # KV — IP-based rate limiting
-# Create: wrangler kv:namespace create RATE_LIMITER
-[[kv_namespaces]]
-binding = "RATE_LIMITER"
-id = "REPLACE_WITH_REAL_KV_ID"
-
+#   Create: wrangler kv:namespace create RATE_LIMITER
+# [[kv_namespaces]]
+# binding = "RATE_LIMITER"
+# id = "REPLACE_WITH_REAL_KV_ID"
+#
 # D1 — analytics and persistent storage
-# Create: wrangler d1 create ai-code-reviewer-db
-[[d1_databases]]
-binding = "DB"
-database_name = "ai-code-reviewer-db"
-database_id = "REPLACE_WITH_REAL_D1_ID"
-
+#   Create: wrangler d1 create ai-code-reviewer-db
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "ai-code-reviewer-db"
+# database_id = "REPLACE_WITH_REAL_D1_ID"
+#
 # R2 — raw code file storage
-# Create: wrangler r2 bucket create ai-code-reviewer-storage
-[[r2_buckets]]
-binding = "CODE_STORAGE"
-bucket_name = "ai-code-reviewer-storage"
-
+#   Create: wrangler r2 bucket create ai-code-reviewer-storage
+# [[r2_buckets]]
+# binding = "CODE_STORAGE"
+# bucket_name = "ai-code-reviewer-storage"
+#
 # Vectorize — semantic code search
-# Create: wrangler vectorize create code-embeddings --dimensions=768 --metric=cosine
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "code-embeddings"
+#   Create: wrangler vectorize create code-embeddings --dimensions=768 --metric=cosine
+# [[vectorize]]
+# binding = "VECTORIZE"
+# index_name = "code-embeddings"
