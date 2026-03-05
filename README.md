@@ -69,29 +69,6 @@ Worker: `http://localhost:8787`
 
 ---
 
-## Project Structure
-
-```
-ai_code_reviewer/
-├── frontend/
-│   └── src/
-│       ├── App.tsx          # Main UI — WebSocket client, message state, rendering
-│       └── App.css          # Design system — tokens, layout, components
-├── worker/
-│   ├── index.ts             # Worker entry point, HTTP routing, CORS
-│   ├── agent.ts             # Durable Object — WebSocket upgrade, state persistence
-│   └── lib/
-│       ├── websocket-handler.ts    # WS message dispatch (submit_code, list_reviews)
-│       ├── code-review-service.ts  # AI prompt construction, streaming, language validation
-│       ├── cache-service.ts
-│       ├── rate-limiter.ts
-│       └── ...
-├── wrangler.toml            # Worker + Durable Object bindings
-└── .env.example
-```
-
----
-
 ## WebSocket Protocol
 
 Connect to `/agent` and send JSON messages:
