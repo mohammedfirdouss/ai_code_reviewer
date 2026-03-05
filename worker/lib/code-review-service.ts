@@ -1,86 +1,84 @@
 import { CodeReviewRequest } from "../types";
 
-// Language detection patterns
-const LANGUAGE_PATTERNS = {
+// Language detection patterns — tested against raw (case-sensitive) code
+const LANGUAGE_PATTERNS: Record<string, RegExp[]> = {
   javascript: [
-    /\b(function|const|let|var|=>|console\.log|require|import|export)\b/,
+    /\b(function|const|let|var)\b/,
     /\b(async|await|Promise|setTimeout|setInterval)\b/,
-    /\.(js|jsx|ts|tsx)$/,
+    /\b(require|module\.exports)\b/,
     /document\.|window\.|localStorage\./,
-    /React\.|useState|useEffect/
+    /console\.log\s*\(/,
   ],
   typescript: [
-    /\b(interface|type|enum|namespace|implements|extends)\b/,
-    /:\s*(string|number|boolean|any|void|object)/,
-    /\.(ts|tsx)$/,
-    /<[A-Z][^>]*>/,
-    /\bas\s+\w+/
+    /:\s*(string|number|boolean|any|void|never|unknown)\b/,
+    /\binterface\s+\w+/,
+    /\btype\s+\w+\s*=/,
+    /\benum\s+\w+/,
+    /\bas\s+\w+|<\w+>\s*\(/,
   ],
   python: [
-    /\b(def|class|import|from|if __name__|print|len|range)\b/,
-    /\b(self|None|True|False|elif|lambda)\b/,
-    /\.py$/,
-    /@\w+/,
-    /\bwith\s+\w+.*:/
+    /\bdef\s+\w+\s*\(/,
+    /\b(elif|lambda|None|True|False)\b/,
+    /\bself\b/,
+    /\bwith\s+\w+.*:/,
+    /^\s*@\w+/m,
   ],
   java: [
-    /\b(public|private|protected|static|class|interface|extends|implements)\b/,
-    /\b(String|int|boolean|void|ArrayList|HashMap)\b/,
-    /\.java$/,
-    /System\.out\.println/,
-    /\bnew\s+\w+\(/
+    /\bSystem\.out\.print/,
+    /\bpublic\s+(static\s+)?void\s+main\s*\(\s*String/,
+    /\bimport\s+java\./,
+    /\b(ArrayList|HashMap|LinkedList)<\w+>/,
+    /@Override\b/,
   ],
   go: [
-    /\b(package|func|var|const|import|type|struct|interface)\b/,
-    /\b(fmt\.Print|make|append|len|cap)\b/,
-    /\.go$/,
+    /\bpackage\s+\w+/,
+    /\bfunc\s+\w+\s*\(/,
+    /\bfmt\.(Print|Println|Printf|Sprintf)/,
     /:=/,
-    /\bgo\s+\w+/
+    /\bgo\s+func\b/,
   ],
   rust: [
-    /\b(fn|let|mut|impl|struct|enum|trait|use|mod)\b/,
-    /\b(String|Vec|Option|Result|unwrap|expect)\b/,
-    /\.rs$/,
-    /println!/,
-    /&str|&mut/
+    /\bfn\s+\w+\s*\(/,
+    /\blet\s+mut\b/,
+    /\b(impl|trait|enum)\s+\w+/,
+    /println!\s*\(/,
+    /&str\b|&mut\b/,
   ],
   cpp: [
-    /\b(#include|using namespace|class|struct|template|public|private)\b/,
-    /\b(std::|cout|cin|endl|vector|string)\b/,
-    /\.(cpp|cc|cxx|h|hpp)$/,
-    /#include\s*<\w+>/,
-    /\bint\s+main\s*\(/
+    /#include\s*[<"]\w+/,
+    /\bstd::/,
+    /\bcout\s*<</,
+    /\bint\s+main\s*\(/,
+    /\b(template|nullptr)\b/,
   ],
   csharp: [
-    /\b(using|namespace|class|struct|interface|public|private|static)\b/,
-    /\b(string|int|bool|void|List|Dictionary|Console\.WriteLine)\b/,
-    /\.cs$/,
-    /\[.*\]/,
-    /\bnew\s+\w+\(/
-  ]
+    /\busing\s+(System|Microsoft)\b/,
+    /\bnamespace\s+\w+/,
+    /\bConsole\.Write/,
+    /\b(List|Dictionary|IEnumerable)<\w+>/,
+    /\basync\s+Task\b/,
+  ],
 };
 
 /**
- * Detect the programming language of the given code
+ * Detect the programming language of the given code.
+ * Patterns are tested against the raw code (case-sensitive) to avoid false matches.
  */
 function detectLanguage(code: string): string[] {
   const detectedLanguages: string[] = [];
-  const codeNormalized = code.toLowerCase();
-  
+
   for (const [language, patterns] of Object.entries(LANGUAGE_PATTERNS)) {
     let matches = 0;
     for (const pattern of patterns) {
-      if (pattern.test(codeNormalized) || pattern.test(code)) {
+      if (pattern.test(code)) {
         matches++;
       }
     }
-    
-    // If at least 2 patterns match, consider it a candidate
     if (matches >= 2) {
       detectedLanguages.push(language);
     }
   }
-  
+
   return detectedLanguages;
 }
 
@@ -173,69 +171,54 @@ export class CodeReviewService {
   }
 
   /**
-   * Perform code review using Workers AI
+   * Perform code review using Workers AI with real streaming.
+   * Each token is forwarded to onChunk as it arrives.
    */
   static async performReview(
-    ai: any, 
-    data: CodeReviewRequest, 
+    ai: any,
+    data: CodeReviewRequest,
     onChunk: (chunk: string) => void
   ): Promise<string> {
     const { code, category, language } = data;
-    
     const systemPrompt = this.getSystemPrompt(category);
-    
+
     try {
-      // Call Workers AI with a more reliable model
       const response = await ai.run(
-        "@cf/meta/llama-3.1-8b-instruct",
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
         {
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: this.formatCodeForReview(code, language) }
-          ]
+          ],
+          stream: true,
         }
       );
 
       let fullResponse = "";
-      
-      // Debug: Log the response structure
-      console.log("AI Response type:", typeof response);
-      console.log("AI Response:", response);
-      
-      // Handle the response from the non-streaming model
-      if (response && response.response) {
+
+      if (response && typeof response[Symbol.asyncIterator] === 'function') {
+        for await (const chunk of response) {
+          const text = chunk.response || '';
+          if (text) {
+            fullResponse += text;
+            onChunk(text);
+          }
+        }
+      } else if (response?.response) {
+        // Non-streaming fallback
         fullResponse = response.response;
         onChunk(fullResponse);
-      } else if (response && typeof response === 'string') {
-        fullResponse = response;
-        onChunk(fullResponse);
-      } else if (response && response.text) {
-        fullResponse = response.text;
-        onChunk(fullResponse);
-      } else if (response && response.content) {
-        fullResponse = response.content;
-        onChunk(fullResponse);
       } else {
-        // Fallback: try to extract any text content
-        console.log("Fallback response processing...");
-        const result = response?.message || response?.output || JSON.stringify(response);
-        if (result && typeof result === 'string') {
-          fullResponse = result;
-          onChunk(fullResponse);
-        } else {
-          throw new Error(`Unexpected AI response format: ${JSON.stringify(response)}`);
-        }
+        throw new Error(`Unexpected AI response format`);
       }
-      
-      if (!fullResponse || fullResponse.trim() === "") {
+
+      if (!fullResponse.trim()) {
         throw new Error("AI returned empty response");
       }
-      
-      console.log("Final response length:", fullResponse.length);
+
       return fullResponse;
-      
+
     } catch (error) {
-      console.error("AI Review Error:", error);
       throw new Error(`AI review failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

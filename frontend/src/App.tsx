@@ -55,6 +55,8 @@ function App() {
   const lastMessageRef = useRef<string>('');
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const isStreamingActiveRef = useRef(false);
+  const reviewsLoadedRef = useRef(false);
 
   useEffect(() => {
     connectWebSocket();
@@ -131,7 +133,7 @@ function App() {
   }, [messages, streaming]);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark-mode', darkMode);
+    // No-op: dark/light mode is handled via .app.dark class in CSS
   }, [darkMode]);
 
   useEffect(() => {
@@ -157,6 +159,16 @@ function App() {
     }, 3000);
   };
 
+  const getClientId = (): string => {
+    const key = 'ai-reviewer-client-id';
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(key, id);
+    }
+    return id;
+  };
+
   const connectWebSocket = () => {
     // Clear any existing reconnect timeout
     if (reconnectTimeoutRef.current) {
@@ -173,10 +185,10 @@ function App() {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.DEV 
-      ? 'localhost:8787' 
+    const host = import.meta.env.DEV
+      ? 'localhost:8787'
       : 'ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev';
-    const wsUrl = `${protocol}//${host}/agent`;
+    const wsUrl = `${protocol}//${host}/agent?clientId=${getClientId()}`;
     
     const socket = new WebSocket(wsUrl);
     
@@ -232,37 +244,38 @@ function App() {
   const handleMessage = (data: any) => {
     switch (data.type) {
       case 'stream':
+        isStreamingActiveRef.current = true;
         setStreaming(true);
-        addMessage('agent', data.text);
+        setMessages(prev => {
+          const lastMsg = prev[prev.length - 1];
+          // Accumulate chunks into the last agent message if streaming is active
+          if (lastMsg && lastMsg.type === 'agent' && isStreamingActiveRef.current) {
+            return [...prev.slice(0, -1), { ...lastMsg, content: lastMsg.content + data.text }];
+          }
+          // Start a new agent message
+          return [...prev, { type: 'agent' as const, content: data.text, timestamp: Date.now() }];
+        });
         break;
       case 'reviews':
         try {
           const fetchedReviews = data.reviews || [];
-          const validReviews = fetchedReviews.filter((review: Review) => 
+          const validReviews = fetchedReviews.filter((review: Review) =>
             review.result && review.result.trim() !== ''
           );
-          
+
           setReviews(prev => {
             const existingIds = new Set(prev.map(r => r.id));
             const newReviews = validReviews.filter((review: Review) => !existingIds.has(review.id));
             return [...prev, ...newReviews];
           });
-          
-          if (validReviews.length === 0) {
-            addMessage('system', 'No past reviews found. Your reviews will appear here once you submit code for analysis.');
-          } else {
-            addMessage('system', `Found ${validReviews.length} review(s). Check the "Reviews" tab to see them.`);
-            setActiveTab('reviews');
-          }
+          reviewsLoadedRef.current = true;
         } catch (e) {
           addMessage('system', 'Failed to load reviews');
         }
         break;
-      case 'done':
+      case 'done': {
+        isStreamingActiveRef.current = false;
         setStreaming(false);
-        if (data.review.result) {
-          addMessage('agent', data.review.result);
-        }
         const newReview: Review = {
           id: data.review.id,
           result: data.review.result || '',
@@ -273,15 +286,14 @@ function App() {
         };
         setReviews(prev => {
           const exists = prev.some(review => review.id === newReview.id);
-          if (exists) {
-            return prev;
-          }
+          if (exists) return prev;
           return [newReview, ...prev];
         });
         showToast('Review completed!', 'success');
-        setActiveTab('reviews');
         break;
+      }
       case 'language_error':
+        isStreamingActiveRef.current = false;
         setStreaming(false);
         addMessage('system', `Language Detection Issue: ${data.error}`);
         if (data.suggestion) {
@@ -290,6 +302,7 @@ function App() {
         showToast('Language mismatch detected', 'error');
         break;
       case 'error':
+        isStreamingActiveRef.current = false;
         setStreaming(false);
         addMessage('system', `Error: ${data.error}`);
         showToast(data.error, 'error');
@@ -338,6 +351,7 @@ function App() {
       return;
     }
 
+    isStreamingActiveRef.current = false;
     addMessage('user', `Submitted ${language} code for ${category} review`);
     setStreaming(true);
 
@@ -510,11 +524,13 @@ function App() {
               <Code className="icon-sm" />
               <span>Review</span>
             </button>
-            <button 
+            <button
               className={`tab-button ${activeTab === 'reviews' ? 'active' : ''}`}
               onClick={() => {
                 setActiveTab('reviews');
-                loadReviews();
+                if (!reviewsLoadedRef.current) {
+                  loadReviews();
+                }
               }}
               aria-label="Reviews"
             >
@@ -651,7 +667,7 @@ function App() {
             <div className="reviews-panel">
               <div className="reviews-header">
                 <h3>Review History</h3>
-                <button onClick={loadReviews} className="refresh-button" title="Refresh reviews">
+                <button onClick={() => { reviewsLoadedRef.current = false; loadReviews(); }} className="refresh-button" title="Refresh reviews">
                   <Search className="icon-xs" />
                   Refresh
                 </button>
@@ -860,29 +876,19 @@ function App() {
                         </span>
                       </div>
                       <div className="message-text">
-                        {msg.type === 'user' && msg.content.includes('code') ? (
-                          currentReview ? (
-                            <div className="code-display">
-                              {renderCodeBlock(currentReview.code, currentReview.language)}
-                            </div>
-                          ) : (
-                            msg.content
-                          )
-                        ) : (
-                          <div className="message-content-text">
-                            {msg.content.split(/```(\w+)?\n([\s\S]*?)```/).map((part, i) => {
-                              if (i % 3 === 2) {
-                                const lang = msg.content.split('```')[i - 1] || 'text';
-                                return (
-                                  <div key={i}>
-                                    {renderCodeBlock(part, lang)}
-                                  </div>
-                                );
-                              }
-                              return <span key={i}>{part}</span>;
-                            })}
-                          </div>
-                        )}
+                        <div className="message-content-text">
+                          {msg.content.split(/```(\w+)?\n([\s\S]*?)```/).map((part, i, arr) => {
+                            if (i % 3 === 0) {
+                              return part ? <span key={i}>{part}</span> : null;
+                            }
+                            if (i % 3 === 1) {
+                              return null; // language tag, used by code block below
+                            }
+                            // i % 3 === 2 → code content
+                            const lang = arr[i - 1] || 'text';
+                            return <div key={i}>{renderCodeBlock(part, lang)}</div>;
+                          })}
+                        </div>
                       </div>
                     </div>
                   </div>

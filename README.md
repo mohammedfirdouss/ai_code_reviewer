@@ -1,241 +1,184 @@
-# AI-Powered Code Reviewer
+# AI Code Reviewer
 
-A modern, real-time AI code review application with intelligent language detection, built on Cloudflare's edge computing platform. Get instant code analysis, security audits, performance insights, and documentation suggestions powered by Llama 3.1.
+Real-time AI-powered code analysis running on Cloudflare's edge. Paste code, get a streaming review — security audits, performance analysis, documentation feedback, or a general quality pass.
 
-## Features
+**Live:** [ai-code-reviewer-5fq.pages.dev](https://ai-code-reviewer-5fq.pages.dev)
 
-- **Intelligent Language Detection** - Automatically detects and validates programming languages
-- **Real-time Streaming** - Watch AI analysis stream in real-time as it's generated
-- **Multi-language Support** - JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#, PHP, Ruby, Swift, Kotlin
+---
 
-- **Review Categories**:
-  - **Quick Review** - Overall code quality assessment
-  - **Security Audit** - Vulnerability detection & OWASP analysis
-  - **Performance Analysis** - Optimization suggestions
-  - **Documentation Review** - Comment & documentation improvements
+## How It Works
 
-## Quick Start
+```
+Browser (React) ──WebSocket──> Cloudflare Worker ──> Durable Object ──> Workers AI (Llama 3.3 70B)
+                                                            |
+                                                     Persistent state
+                                                     (review history)
+```
 
-### Option 1: Use the Live Application
+- The frontend connects via WebSocket on load and streams review output chunk-by-chunk.
+- The backend is a Cloudflare Durable Object — one persistent instance per agent that holds conversation history and past reviews in storage.
+- Language detection runs before the AI call. If the selected language doesn't match the code, the review is rejected with a suggestion.
 
-Visit the deployed application: **[https://ai-code-reviewer-5fq.pages.dev](https://ai-code-reviewer-5fq.pages.dev)**
+---
 
-### Option 2: Local Development
+## Stack
+
+| Layer     | Technology                          |
+|-----------|-------------------------------------|
+| Frontend  | React + TypeScript (Vite)           |
+| Backend   | Cloudflare Workers (TypeScript)     |
+| State     | Cloudflare Durable Objects          |
+| AI        | Workers AI — Llama 3.3 70B Instruct |
+| Deploy    | Cloudflare Pages + Workers          |
+
+---
+
+## Review Types
+
+| Type            | What it checks                                          |
+|-----------------|---------------------------------------------------------|
+| `quick`         | Overall code quality, structure, naming, logic          |
+| `security`      | Vulnerabilities, OWASP Top 10, injection risks          |
+| `performance`   | Bottlenecks, algorithmic complexity, memory usage       |
+| `documentation` | Inline comments, docstrings, API surface clarity        |
+
+---
+
+## Local Development
+
+**Prerequisites:** Node.js 18+, a Cloudflare account, Wrangler CLI
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd ai_code_reviewer
-
-# Install backend dependencies
+# 1. Install dependencies
 npm install
+cd frontend && npm install && cd ..
 
-# Install frontend dependencies
-cd frontend
-npm install
-cd ..
+# 2. Configure environment
+cp .env.example .env
+# Fill in CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN
 
-# Start the backend Worker (in one terminal)
+# 3. Start the backend Worker (terminal 1)
 npm run dev
 
-# Start the frontend (in another terminal)
+# 4. Start the frontend (terminal 2)
 npm run dev:frontend
 ```
 
-The frontend will be available at `http://localhost:5173` and connects to the local Worker at `http://localhost:8787`.
+Frontend: `http://localhost:5173`
+Worker: `http://localhost:8787`
 
-### Option 3: HTTP API
+---
 
-Use the REST API directly without the frontend:
+## Project Structure
 
-```bash
-# Submit code for review
-curl -X POST https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/review \
-  -H "Content-Type: application/json" \
-  -d '{
-    "code": "console.log(\"Hello World\");",
-    "category": "quick",
-    "language": "javascript"
-  }'
-
-# Get all reviews
-curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/reviews
-
-# Check service status
-curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/status
+```
+ai_code_reviewer/
+├── frontend/
+│   └── src/
+│       ├── App.tsx          # Main UI — WebSocket client, message state, rendering
+│       └── App.css          # Design system — tokens, layout, components
+├── worker/
+│   ├── index.ts             # Worker entry point, HTTP routing, CORS
+│   ├── agent.ts             # Durable Object — WebSocket upgrade, state persistence
+│   └── lib/
+│       ├── websocket-handler.ts    # WS message dispatch (submit_code, list_reviews)
+│       ├── code-review-service.ts  # AI prompt construction, streaming, language validation
+│       ├── cache-service.ts
+│       ├── rate-limiter.ts
+│       └── ...
+├── wrangler.toml            # Worker + Durable Object bindings
+└── .env.example
 ```
 
-## API Reference
+---
 
-### Endpoints
+## WebSocket Protocol
 
-#### `POST /api/review`
-Submit code for AI analysis.
+Connect to `/agent` and send JSON messages:
 
-**Request:**
-```json
-{
-  "code": "console.log('Hello World');",
-  "category": "quick|security|performance|documentation",
-  "language": "javascript|typescript|python|java|go|rust|cpp|csharp|php|ruby|swift|kotlin|other"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "review": {
-    "id": "unique-review-id",
-    "code": "console.log('Hello World');",
-    "category": "quick",
-    "language": "javascript",
-    "result": "AI analysis result...",
-    "timestamp": 1760798282676
-  }
-}
-```
-
-#### `GET /api/reviews`
-Retrieve all submitted code reviews.
-
-#### `GET /api/status`
-Check service health and statistics.
-
-#### `GET /health`
-Basic health check endpoint.
-
-#### `GET /api`
-Interactive API documentation.
-
-### WebSocket API
-
-The application also supports WebSocket connections for real-time streaming. Connect to `/agent` endpoint and send:
-
+**Submit code for review:**
 ```json
 {
   "type": "submit_code",
-  "code": "your code here",
-  "category": "quick",
-  "language": "javascript"
+  "code": "func main() { fmt.Println(\"hello\") }",
+  "language": "go",
+  "category": "performance"
 }
 ```
 
+**Server events:**
+```
+{ "type": "stream", "text": "chunk..." }   -- streaming content
+{ "type": "done",   "review": { ... } }    -- review complete
+{ "type": "language_error", "error": "..." } -- language mismatch
+{ "type": "error",  "error": "..." }       -- general error
+```
 
-## Development
+**List past reviews:**
+```json
+{ "type": "list_reviews" }
+```
 
-### Prerequisites
+---
 
-- Node.js 18+ and npm
-- Cloudflare account (for deployment)
-- Wrangler CLI (installed via npm)
+## REST API
 
-### Setup
+```bash
+# Submit for review (non-streaming)
+curl -X POST https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/review \
+  -H "Content-Type: application/json" \
+  -d '{"code": "...", "category": "quick", "language": "python"}'
 
-1. **Install dependencies:**
-   ```bash
-   # Backend
-   npm install
-   
-   # Frontend
-   cd frontend && npm install && cd ..
-   ```
+# Get all past reviews
+curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/reviews
 
-2. **Configure environment:**
-   ```bash
-   npm run setup
-   # Edit .env with your Cloudflare credentials
-   ```
+# Health check
+curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/health
+```
 
-3. **Run locally:**
-   ```bash
-   # Terminal 1: Backend
-   npm run dev
-   
-   # Terminal 2: Frontend
-   npm run dev:frontend
-   ```
-
-### Testing
-
-1. Open `http://localhost:5173` in your browser
-2. Paste code into the editor
-3. Select a review category
-4. Click "Review Code" to see streaming AI analysis
+---
 
 ## Deployment
 
-### Backend (Cloudflare Worker)
-
 ```bash
-# Configure environment first
-npm run setup
-
-# Deploy
+# Deploy the Worker
 npm run deploy
+
+# Deploy the frontend to Cloudflare Pages
+cd frontend && npm run deploy
 ```
 
-### Frontend (Cloudflare Pages)
-
 ```bash
-cd frontend
-npm run deploy
-```
-
-The deployment script uses API tokens from `.env` - no OAuth required!
-
-### Verify Deployment
-
-```bash
-# Check health
-curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/health
-
-# View logs
-npm run logs
-
-# Verify deployment
+# Verify after deploy
 npm run verify
+
+# Tail live logs
+npm run logs
 ```
 
-## Language Detection
-
-The application intelligently detects programming languages using pattern recognition:
-
-- **Automatic Detection** - Analyzes code syntax to identify the language
-- **Validation** - Prevents mismatched language selections
-- **Smart Suggestions** - Recommends correct language when mismatch detected
-- **Non-code Detection** - Identifies and rejects plain text submissions
-
-### Supported Languages
-
-JavaScript, TypeScript, Python, Java, Go, Rust, C++, C#, PHP, Ruby, Swift, Kotlin, and more.
+---
 
 ## Keyboard Shortcuts
 
-- `Ctrl/Cmd + K` - Focus code input
-- `Ctrl/Cmd + Enter` - Submit review
+| Shortcut           | Action           |
+|--------------------|------------------|
+| `Ctrl/Cmd + K`     | Focus code input |
+| `Ctrl/Cmd + Enter` | Submit review    |
 
-## Configuration
+---
 
-### Worker Configuration (`wrangler.toml`)
-
-- **AI Binding**: Connects to Workers AI for Llama 3.1
-- **Durable Object**: `CodeReviewerAgent` for stateful sessions
-- **Compatibility**: Node.js compatibility enabled
-
-### Environment Variables
-
-Create a `.env` file with:
+## Environment Variables
 
 ```env
+# .env (never commit this)
 CLOUDFLARE_ACCOUNT_ID=your-account-id
 CLOUDFLARE_API_TOKEN=your-api-token
 ```
 
-## Resources
+---
 
-- [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
+## References
+
+- [Workers AI Models](https://developers.cloudflare.com/workers-ai/models/)
 - [Durable Objects](https://developers.cloudflare.com/durable-objects/)
 - [Cloudflare Pages](https://developers.cloudflare.com/pages/)
-- [Workers AI Models](https://developers.cloudflare.com/workers-ai/models/)
-

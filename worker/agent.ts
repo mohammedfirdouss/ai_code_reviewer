@@ -50,7 +50,13 @@ export class CodeReviewerAgent extends DurableObject {
   }
 
   private async saveState() {
-    // Save state to storage
+    // Cap to prevent unbounded storage growth
+    if (this.state.reviews.length > 100) {
+      this.state.reviews = this.state.reviews.slice(-100);
+    }
+    if (this.state.history.length > 200) {
+      this.state.history = this.state.history.slice(-200);
+    }
     await this.ctx.storage.put('reviews', this.state.reviews);
     await this.ctx.storage.put('history', this.state.history);
   }

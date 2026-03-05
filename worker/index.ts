@@ -1,10 +1,6 @@
 import { Env } from './types';
 import { CodeReviewerAgent } from './agent';
-import { CacheService } from './lib/cache-service';
 import { RateLimiterService } from './lib/rate-limiter';
-import { DatabaseService } from './lib/database-service';
-import { StorageService } from './lib/storage-service';
-import { MultiModelService } from './lib/multi-model-service';
 import { SlackBotService } from './lib/slack-bot-service';
 import { VectorEmbeddingsService } from './lib/vector-embeddings-service';
 import { AdvancedAnalyticsService } from './lib/advanced-analytics-service';
@@ -183,15 +179,35 @@ export default {
   },
 
   /**
-   * Handle requests to the agent endpoint
+   * Check rate limit for a request. Fails open if RATE_LIMITER binding is not configured.
+   */
+  async checkRateLimit(request: any, env: Env) {
+    if (!env.RATE_LIMITER) {
+      return { allowed: true, remaining: 100, resetAt: Date.now() + 3600000 };
+    }
+    try {
+      const rateLimiter = new RateLimiterService(env.RATE_LIMITER);
+      const identifier = RateLimiterService.getIdentifier(request, 'ip');
+      return rateLimiter.checkLimit(identifier, 'standard');
+    } catch {
+      return { allowed: true, remaining: 100, resetAt: Date.now() + 3600000 };
+    }
+  },
+
+  /**
+   * Handle requests to the agent endpoint.
+   * Each client gets its own isolated Durable Object via clientId.
    */
   async handleAgentRequest(request: any, env: Env, corsHeaders: Record<string, string>) {
-    // Get or create agent instance
-    const agentId = env.CODE_REVIEWER_AGENT.idFromName('default-agent');
-    const agent = env.CODE_REVIEWER_AGENT.get(agentId);
-    
-    // Modify the URL to remove /agent prefix for the Durable Object
     const url = new URL(request.url);
+    // Use clientId from query param for per-user isolation; fall back to IP
+    const clientId = url.searchParams.get('clientId')
+      || request.headers.get('CF-Connecting-IP')
+      || 'anonymous';
+    const agentId = env.CODE_REVIEWER_AGENT.idFromName(clientId);
+    const agent = env.CODE_REVIEWER_AGENT.get(agentId);
+
+    // Strip /agent prefix before forwarding to the Durable Object
     url.pathname = url.pathname.replace('/agent', '');
     
     // Create new request with modified URL
@@ -606,12 +622,118 @@ export default {
       });
     } catch (error) {
       return new Response(JSON.stringify({ 
-        success: false, 
+        success: false,
         error: error instanceof Error ? error.message : 'Review test failed'
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
       });
     }
-  }
+  },
+
+  /**
+   * Return available AI models
+   */
+  handleModels(_env: Env, corsHeaders: Record<string, string>) {
+    return new Response(JSON.stringify({
+      models: [
+        { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B', default: true },
+      ]
+    }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  },
+
+  /**
+   * Return supported review categories
+   */
+  handleCategories(corsHeaders: Record<string, string>) {
+    return new Response(JSON.stringify({
+      categories: [
+        { id: 'quick',         label: 'Quick Review',           description: 'Overall code quality' },
+        { id: 'security',      label: 'Security Audit',         description: 'Vulnerabilities, OWASP Top 10' },
+        { id: 'performance',   label: 'Performance Analysis',   description: 'Complexity, memory, bottlenecks' },
+        { id: 'documentation', label: 'Documentation Review',   description: 'Comments, docstrings, clarity' },
+      ]
+    }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  },
+
+  /**
+   * Return cache statistics (stub — requires REVIEW_CACHE binding)
+   */
+  async handleCacheStats(env: Env, corsHeaders: Record<string, string>) {
+    if (!env.REVIEW_CACHE) {
+      return new Response(JSON.stringify({ configured: false }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    return new Response(JSON.stringify({ configured: true }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  },
+
+  /**
+   * Return rate limit status for the requesting IP
+   */
+  async handleRateLimitStatus(request: any, env: Env, corsHeaders: Record<string, string>) {
+    if (!env.RATE_LIMITER) {
+      return new Response(JSON.stringify({ configured: false }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    try {
+      const rateLimiter = new RateLimiterService(env.RATE_LIMITER);
+      const identifier = RateLimiterService.getIdentifier(request, 'ip');
+      const status = await rateLimiter.getStatus(identifier);
+      return new Response(JSON.stringify(status), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch (error: any) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Return analytics summary (requires DB + VECTORIZE bindings)
+   */
+  async handleAnalytics(request: any, env: Env, corsHeaders: Record<string, string>) {
+    if (!env.DB || !env.VECTORIZE) {
+      return new Response(JSON.stringify({ configured: false, message: 'Analytics bindings not configured' }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    try {
+      const vectorService = new VectorEmbeddingsService(env.VECTORIZE);
+      const analyticsService = new AdvancedAnalyticsService(env.DB, vectorService);
+      const url = new URL(request.url);
+      const timeRange = parseInt(url.searchParams.get('days') || '30');
+      const data = await analyticsService.getDashboard(timeRange);
+      return new Response(JSON.stringify({ success: true, data }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch (error: any) {
+      return new Response(JSON.stringify({ success: false, error: error.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
+
+  /**
+   * Accept user feedback on a review
+   */
+  async handleFeedback(request: any, _env: Env, corsHeaders: Record<string, string>) {
+    try {
+      await request.json(); // consume body
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    } catch {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid request body' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+  },
 };
