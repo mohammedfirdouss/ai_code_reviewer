@@ -1,24 +1,23 @@
 name = "ai-code-reviewer-backend"
+main = "worker/index.ts"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Pages build output directory (static frontend)
-pages_build_output_dir = "frontend/dist"
+# === REQUIRED BINDINGS ===
 
-# === CLOUDFLARE BINDINGS ===
-
-# Workers AI binding for LLM access
+# Workers AI — required for code reviews
 [ai]
 binding = "AI"
 
-# Durable Objects for stateful sessions
+# Durable Objects — required for WebSocket sessions and review storage
 [[durable_objects.bindings]]
 name = "CODE_REVIEWER_AGENT"
 class_name = "CodeReviewerAgent"
 
+# new_sqlite_classes required for SQLite-backed Durable Objects (free tier)
 [[migrations]]
 tag = "v1"
-new_classes = ["CodeReviewerAgent"]
+new_sqlite_classes = ["CodeReviewerAgent"]
 
 # === OPTIONAL BINDINGS ===
 # The worker fails open when these are absent — no crash, just reduced features.
