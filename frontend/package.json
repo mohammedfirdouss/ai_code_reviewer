@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "./deploy-with-token.sh"
+    "deploy": "npm run build && wrangler pages deploy dist --project-name ai-code-reviewer"
   },
   "dependencies": {
     "@types/react-syntax-highlighter": "^15.5.11",
