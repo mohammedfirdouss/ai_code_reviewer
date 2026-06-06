@@ -4,8 +4,6 @@ Real-time AI-powered code analysis running on Cloudflare's edge. Paste code, get
 
 **Live:** [ai-code-reviewer-5fq.pages.dev](https://ai-code-reviewer-5fq.pages.dev)
 
----
-
 ## How It Works
 
 ```
@@ -19,8 +17,6 @@ Browser (React) ──WebSocket──> Cloudflare Worker ──> Durable Object 
 - The backend is a Cloudflare Durable Object — one persistent instance per agent that holds conversation history and past reviews in storage.
 - Language detection runs before the AI call. If the selected language doesn't match the code, the review is rejected with a suggestion.
 
----
-
 ## Stack
 
 | Layer     | Technology                          |
@@ -31,8 +27,6 @@ Browser (React) ──WebSocket──> Cloudflare Worker ──> Durable Object 
 | AI        | Workers AI — Llama 3.3 70B Instruct |
 | Deploy    | Cloudflare Pages + Workers          |
 
----
-
 ## Review Types
 
 | Type            | What it checks                                          |
@@ -41,8 +35,6 @@ Browser (React) ──WebSocket──> Cloudflare Worker ──> Durable Object 
 | `security`      | Vulnerabilities, OWASP Top 10, injection risks          |
 | `performance`   | Bottlenecks, algorithmic complexity, memory usage       |
 | `documentation` | Inline comments, docstrings, API surface clarity        |
-
----
 
 ## Local Development
 
@@ -66,8 +58,6 @@ npm run dev:frontend
 
 Frontend: `http://localhost:5173`
 Worker: `http://localhost:8787`
-
----
 
 
 ## WebSocket Protocol
@@ -97,8 +87,6 @@ Connect to `/agent` and send JSON messages:
 { "type": "list_reviews" }
 ```
 
----
-
 ## REST API
 
 ```bash
@@ -113,8 +101,6 @@ curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/api/revi
 # Health check
 curl https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev/health
 ```
-
----
 
 ## Deployment
 
@@ -134,16 +120,12 @@ npm run verify
 npm run logs
 ```
 
----
-
 ## Keyboard Shortcuts
 
 | Shortcut           | Action           |
 |--------------------|------------------|
 | `Ctrl/Cmd + K`     | Focus code input |
 | `Ctrl/Cmd + Enter` | Submit review    |
-
----
 
 ## Environment Variables
 
@@ -152,8 +134,6 @@ npm run logs
 CLOUDFLARE_ACCOUNT_ID=your-account-id
 CLOUDFLARE_API_TOKEN=your-api-token
 ```
-
----
 
 ## References
 
