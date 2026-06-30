@@ -6,6 +6,7 @@ Real-time AI-powered code analysis running on Cloudflare's edge. Paste code, get
 
 ## How It Works
 
+
 ```
 Browser (React) ──WebSocket──> Cloudflare Worker ──> Durable Object ──> Workers AI (Llama 3.3 70B)
                                                             |
