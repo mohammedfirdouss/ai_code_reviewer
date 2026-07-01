@@ -14,27 +14,27 @@ import { WorkersAI } from '../types';
 // Available models and their capabilities
 export const AI_MODELS = {
   // Primary code review model - fast and balanced
-  'llama-3.1-8b': {
-    id: '@cf/meta/llama-3.1-8b-instruct',
-    name: 'Llama 3.1 8B',
+  'glm-4.7-flash': {
+    id: '@cf/zai-org/glm-4.7-flash',
+    name: 'GLM 4.7 Flash',
     description: 'Fast, balanced code review',
     strengths: ['quick', 'documentation', 'general'],
     maxTokens: 4096,
     costTier: 'low'
   },
   // Deep analysis model - more thorough
-  'llama-3.1-70b': {
-    id: '@cf/meta/llama-3.1-70b-instruct',
-    name: 'Llama 3.1 70B',
+  'kimi-k2.6': {
+    id: '@cf/moonshotai/kimi-k2.6',
+    name: 'Kimi K2.6',
     description: 'Deep, thorough analysis',
     strengths: ['security', 'performance', 'architecture'],
     maxTokens: 8192,
     costTier: 'high'
   },
   // Alternative perspective
-  'mistral-7b': {
-    id: '@cf/mistral/mistral-7b-instruct-v0.2',
-    name: 'Mistral 7B',
+  'gemma-4': {
+    id: '@cf/google/gemma-4-26b-a4b-it',
+    name: 'Gemma 4',
     description: 'Alternative analysis perspective',
     strengths: ['quick', 'general'],
     maxTokens: 4096,
@@ -55,12 +55,12 @@ export type ModelKey = keyof typeof AI_MODELS;
 
 // Category to model mapping
 const CATEGORY_MODEL_MAP: Record<string, ModelKey[]> = {
-  quick: ['llama-3.1-8b', 'mistral-7b'],
-  security: ['llama-3.1-70b', 'llama-3.1-8b'],
-  performance: ['deepseek-coder', 'llama-3.1-70b'],
-  documentation: ['llama-3.1-8b', 'mistral-7b'],
-  architecture: ['llama-3.1-70b', 'llama-3.1-8b'],
-  refactoring: ['deepseek-coder', 'llama-3.1-8b']
+  quick: ['glm-4.7-flash', 'gemma-4'],
+  security: ['kimi-k2.6', 'glm-4.7-flash'],
+  performance: ['deepseek-coder', 'kimi-k2.6'],
+  documentation: ['glm-4.7-flash', 'gemma-4'],
+  architecture: ['kimi-k2.6', 'glm-4.7-flash'],
+  refactoring: ['deepseek-coder', 'glm-4.7-flash']
 };
 
 // System prompts for different categories
@@ -284,7 +284,7 @@ Provide your analysis and end with a confidence score in the format:
     language: string,
     onChunk?: (chunk: string) => void
   ): Promise<ReviewResult> {
-    return this.reviewWithModel(code, 'quick', language, 'llama-3.1-8b', onChunk);
+    return this.reviewWithModel(code, 'quick', language, 'glm-4.7-flash', onChunk);
   }
 
   /**
@@ -296,7 +296,7 @@ Provide your analysis and end with a confidence score in the format:
     language: string,
     onChunk?: (chunk: string) => void
   ): Promise<ReviewResult> {
-    return this.reviewWithModel(code, category, language, 'llama-3.1-70b', onChunk);
+    return this.reviewWithModel(code, category, language, 'kimi-k2.6', onChunk);
   }
 
   /**
