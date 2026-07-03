@@ -12,6 +12,7 @@ interface Message {
   type: 'user' | 'agent' | 'system';
   content: string;
   timestamp: number;
+  reviewMeta?: { category: string; language: string };
 }
 
 interface Review {
@@ -28,6 +29,15 @@ interface Toast {
   message: string;
   type: 'success' | 'error' | 'info';
 }
+
+type CategoryColor = 'add' | 'del' | 'warn' | 'info';
+
+const CATEGORY_META: Record<string, { label: string; color: CategoryColor; icon: typeof Sparkles }> = {
+  quick: { label: 'Quick', color: 'add', icon: Sparkles },
+  security: { label: 'Security', color: 'del', icon: Shield },
+  performance: { label: 'Performance', color: 'warn', icon: Zap },
+  documentation: { label: 'Docs', color: 'info', icon: Book },
+};
 
 function App() {
   const [ws, setWs] = useState<WebSocket | null>(null);
@@ -284,6 +294,12 @@ function App() {
           category: data.review.category || category,
           code: data.review.code || code
         };
+        setMessages(prev => {
+          const lastMsg = prev[prev.length - 1];
+          if (!lastMsg || lastMsg.type !== 'agent') return prev;
+          const stamped = { ...lastMsg, reviewMeta: { category: newReview.category, language: newReview.language } };
+          return [...prev.slice(0, -1), stamped];
+        });
         setReviews(prev => {
           const exists = prev.some(review => review.id === newReview.id);
           if (exists) return prev;
@@ -383,7 +399,7 @@ function App() {
     setActiveTab('chat');
     setMessages([
       { type: 'user', content: `Viewing review: ${review.language} ${review.category} review`, timestamp: Date.now() },
-      { type: 'agent', content: review.result, timestamp: review.timestamp }
+      { type: 'agent', content: review.result, timestamp: review.timestamp, reviewMeta: { category: review.category, language: review.language } }
     ]);
   };
 
@@ -432,13 +448,8 @@ function App() {
   };
 
   const getCategoryIcon = (cat: string) => {
-    switch (cat) {
-      case 'quick': return <Sparkles className="icon-sm" />;
-      case 'security': return <Shield className="icon-sm" />;
-      case 'performance': return <Zap className="icon-sm" />;
-      case 'documentation': return <Book className="icon-sm" />;
-      default: return <Code className="icon-sm" />;
-    }
+    const Icon = CATEGORY_META[cat]?.icon || Code;
+    return <Icon className="icon-sm" />;
   };
 
   const filteredReviews = reviews.filter(review => {
@@ -488,12 +499,10 @@ function App() {
       <header className="header">
         <div className="header-content">
           <div className="logo">
-            <div className="logo-icon">
-              <Code className="icon" style={{ color: 'white' }} />
-            </div>
+            <div className="logo-icon" />
             <div className="logo-text">
-              <h1>AI Code Reviewer</h1>
-              <p>Intelligent Code Analysis & Review</p>
+              <h1>Code Review</h1>
+              <p>Llama 3.3 70B · Cloudflare Workers AI</p>
             </div>
           </div>
           <div className="header-actions">
@@ -515,48 +524,39 @@ function App() {
 
       <div className="main-content">
         <div className="sidebar">
-          <div className="tab-navigation">
-            <button 
-              className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
+          <div className="nav-list">
+            <button
+              className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
               onClick={() => setActiveTab('chat')}
-              aria-label="Live Chat"
+              aria-label="Review"
             >
+              <span className="nav-index">01</span>
               <Code className="icon-sm" />
-              <span>Review</span>
+              <span className="nav-label">Review</span>
             </button>
             <button
-              className={`tab-button ${activeTab === 'reviews' ? 'active' : ''}`}
+              className={`nav-item ${activeTab === 'reviews' ? 'active' : ''}`}
               onClick={() => {
                 setActiveTab('reviews');
                 if (!reviewsLoadedRef.current) {
                   loadReviews();
                 }
               }}
-              aria-label="Reviews"
+              aria-label="History"
             >
+              <span className="nav-index">02</span>
               <FileCode className="icon-sm" />
-              <span>History</span>
-              {reviews.length > 0 && (
-                <span style={{ 
-                  marginLeft: '4px',
-                  padding: '2px 6px',
-                  background: 'var(--accent-primary)',
-                  color: 'var(--text-inverse)',
-                  borderRadius: '10px',
-                  fontSize: '11px',
-                  fontWeight: 600
-                }}>
-                  {reviews.length}
-                </span>
-              )}
+              <span className="nav-label">History</span>
+              {reviews.length > 0 && <span className="nav-count">{reviews.length}</span>}
             </button>
-            <button 
-              className={`tab-button ${activeTab === 'stats' ? 'active' : ''}`}
+            <button
+              className={`nav-item ${activeTab === 'stats' ? 'active' : ''}`}
               onClick={() => setActiveTab('stats')}
-              aria-label="Statistics"
+              aria-label="Stats"
             >
+              <span className="nav-index">03</span>
               <TrendingUp className="icon-sm" />
-              <span>Stats</span>
+              <span className="nav-label">Stats</span>
             </button>
           </div>
 
@@ -566,44 +566,50 @@ function App() {
                 <div className="form-section">
                   <h3>Code Review Settings</h3>
                   
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label htmlFor="language">Programming Language</label>
-                      <select
-                        id="language"
-                        value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
-                        className="form-select"
-                      >
-                        <option value="javascript">JavaScript</option>
-                        <option value="typescript">TypeScript</option>
-                        <option value="python">Python</option>
-                        <option value="java">Java</option>
-                        <option value="go">Go</option>
-                        <option value="rust">Rust</option>
-                        <option value="cpp">C++</option>
-                        <option value="csharp">C#</option>
-                        <option value="php">PHP</option>
-                        <option value="ruby">Ruby</option>
-                        <option value="swift">Swift</option>
-                        <option value="kotlin">Kotlin</option>
-                        <option value="other">Other/Unknown</option>
-                      </select>
-                    </div>
+                  <div className="form-group">
+                    <label htmlFor="language">Programming Language</label>
+                    <select
+                      id="language"
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className="form-select"
+                    >
+                      <option value="javascript">JavaScript</option>
+                      <option value="typescript">TypeScript</option>
+                      <option value="python">Python</option>
+                      <option value="java">Java</option>
+                      <option value="go">Go</option>
+                      <option value="rust">Rust</option>
+                      <option value="cpp">C++</option>
+                      <option value="csharp">C#</option>
+                      <option value="php">PHP</option>
+                      <option value="ruby">Ruby</option>
+                      <option value="swift">Swift</option>
+                      <option value="kotlin">Kotlin</option>
+                      <option value="other">Other/Unknown</option>
+                    </select>
+                  </div>
 
-                    <div className="form-group">
-                      <label htmlFor="category">Review Type</label>
-                      <select
-                        id="category"
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value as any)}
-                        className="form-select"
-                      >
-                        <option value="quick">Quick Review</option>
-                        <option value="security">Security Audit</option>
-                        <option value="performance">Performance Analysis</option>
-                        <option value="documentation">Documentation Review</option>
-                      </select>
+                  <div className="form-group">
+                    <label id="category-label">Review Type</label>
+                    <div className="category-picker" role="radiogroup" aria-labelledby="category-label">
+                      {(Object.keys(CATEGORY_META) as Array<keyof typeof CATEGORY_META>).map((key) => {
+                        const meta = CATEGORY_META[key];
+                        const Icon = meta.icon;
+                        return (
+                          <button
+                            type="button"
+                            key={key}
+                            role="radio"
+                            aria-checked={category === key}
+                            className={`category-tab category-tab--${meta.color} ${category === key ? 'active' : ''}`}
+                            onClick={() => setCategory(key as typeof category)}
+                          >
+                            <Icon className="icon-xs" />
+                            <span>{meta.label}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -735,7 +741,7 @@ function App() {
                       <div className="review-header">
                         <div className="review-meta">
                           <span className="review-language">{getLanguageName(review.language)}</span>
-                          <span className="review-category">
+                          <span className={`review-category review-category--${CATEGORY_META[review.category]?.color || 'add'}`}>
                             {getCategoryIcon(review.category)}
                             {review.category}
                           </span>
@@ -786,19 +792,19 @@ function App() {
             <div className="stats-panel">
               <h3>Statistics</h3>
               <div className="stats-grid">
-                <div className="stat-card">
+                <div className="stat-card stat-card--brand">
                   <div className="stat-value">{stats.totalReviews}</div>
                   <div className="stat-label">Total Reviews</div>
                 </div>
-                <div className="stat-card">
+                <div className="stat-card stat-card--add">
                   <div className="stat-value">{stats.byCategory.quick}</div>
                   <div className="stat-label">Quick Reviews</div>
                 </div>
-                <div className="stat-card">
+                <div className="stat-card stat-card--del">
                   <div className="stat-value">{stats.byCategory.security}</div>
                   <div className="stat-label">Security Audits</div>
                 </div>
-                <div className="stat-card">
+                <div className="stat-card stat-card--warn">
                   <div className="stat-value">{stats.byCategory.performance}</div>
                   <div className="stat-label">Performance</div>
                 </div>
@@ -848,6 +854,7 @@ function App() {
               <div className="messages">
                 {messages.map((msg, idx) => (
                   <div key={idx} className={`message message-${msg.type}`}>
+                    <span className="msg-index">{String(idx + 1).padStart(2, '0')}</span>
                     <div className="message-avatar">
                       {msg.type === 'user' ? (
                         <Code className="icon" style={{ fontSize: '20px' }} />
@@ -875,6 +882,12 @@ function App() {
                           {new Date(msg.timestamp).toLocaleTimeString()}
                         </span>
                       </div>
+                      {msg.reviewMeta && (
+                        <div className={`stamp stamp--${CATEGORY_META[msg.reviewMeta.category]?.color || 'add'}`}>
+                          <span className="stamp-head">Reviewed</span>
+                          <span className="stamp-sub">{msg.reviewMeta.category} · {getLanguageName(msg.reviewMeta.language)}</span>
+                        </div>
+                      )}
                       <div className="message-text">
                         <div className="message-content-text">
                           {msg.content.split(/```(\w+)?\n([\s\S]*?)```/).map((part, i, arr) => {
