@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { Env, ReviewState } from './types';
+import { Env, ReviewState, ReviewFinding, StructuredReview } from './types';
 import { WebSocketHandler } from './lib/websocket-handler';
 
 /**
@@ -125,7 +125,7 @@ export class CodeReviewerAgent extends DurableObject {
     if (url.pathname === "/api/review" && request.method === "POST") {
       try {
         const body = await request.json();
-        const { code, category = 'quick', language = 'javascript' } = body;
+        const { code, category = 'quick', language = 'javascript', rules } = body;
 
         if (!code) {
           return new Response(JSON.stringify({ error: 'Code is required' }), {
@@ -152,13 +152,24 @@ export class CodeReviewerAgent extends DurableObject {
 
         // Perform the review
         const reviewId = this.generateReviewId();
-        const review = {
+        const review: {
+          id: string;
+          code: string;
+          category: string;
+          language: string;
+          result: string;
+          timestamp: number;
+          findings: ReviewFinding[];
+          summary: string;
+        } = {
           id: reviewId,
           code: code.slice(0, 2000),
           category,
           language,
           result: '',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          findings: [],
+          summary: ''
         };
 
         // Add to conversation history
@@ -169,12 +180,19 @@ export class CodeReviewerAgent extends DurableObject {
         });
 
         try {
-          // Perform AI review
-          const fullResponse = await this.performAIReview(code, category, language);
-          
+          // Perform AI review (plain-English prose, kept for backwards compatibility)
+          const fullResponse = await this.performAIReview(code, category, language, rules);
+
           review.result = fullResponse;
+
+          // Compute structured findings as a follow-up step. This must never
+          // throw — findings are additive on top of the prose review above.
+          const structured = await this.generateStructuredReviewSafe(code, category, language, rules);
+          review.findings = structured.findings;
+          review.summary = structured.summary;
+
           this.state.reviews.push(review);
-          
+
           this.state.history.push({
             role: "assistant",
             content: fullResponse.slice(0, 500),
@@ -225,22 +243,47 @@ export class CodeReviewerAgent extends DurableObject {
   /**
    * Perform AI review using Workers AI
    */
-  private async performAIReview(code: string, category: string, language: string): Promise<string> {
+  private async performAIReview(code: string, category: string, language: string, rules?: string): Promise<string> {
     const { CodeReviewService } = await import('./lib/code-review-service');
-    
-    // Ensure category is valid
-    const validCategory = ['quick', 'security', 'performance', 'documentation'].includes(category) 
-      ? category as 'quick' | 'security' | 'performance' | 'documentation'
-      : 'quick';
-    
+
+    const validCategory = this.normalizeCategory(category);
+
     return await CodeReviewService.performReview(
       this.env.AI,
-      { code, category: validCategory, language },
+      { code, category: validCategory, language, rules },
       (chunk: string) => {
         // The CodeReviewService handles accumulation internally
         // This callback can be used for real-time streaming if needed
       }
     );
+  }
+
+  /**
+   * Compute structured findings (parallel lenses + independent confidence
+   * pass). Wrapped so a failure here never breaks the surrounding request —
+   * it degrades to an empty findings list instead.
+   */
+  private async generateStructuredReviewSafe(code: string, category: string, language: string, rules?: string): Promise<StructuredReview> {
+    try {
+      const { CodeReviewService } = await import('./lib/code-review-service');
+      const validCategory = this.normalizeCategory(category);
+      return await CodeReviewService.generateStructuredReview(
+        this.env.AI,
+        { code, category: validCategory, language, rules }
+      );
+    } catch (error) {
+      console.error('Structured review failed:', error);
+      return { findings: [], summary: '' };
+    }
+  }
+
+  /**
+   * Ensure category is one of the known review categories.
+   */
+  private normalizeCategory(category: string): 'quick' | 'security' | 'performance' | 'documentation' {
+    return ['quick', 'security', 'performance', 'documentation'].includes(category)
+      ? category as 'quick' | 'security' | 'performance' | 'documentation'
+      : 'quick';
   }
 
   /**

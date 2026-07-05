@@ -1,4 +1,4 @@
-import { WebSocketMessage, ReviewState } from "../types";
+import { WebSocketMessage, ReviewState, ReviewFinding } from "../types";
 import { CodeReviewService } from "./code-review-service";
 
 export class WebSocketHandler {
@@ -58,68 +58,79 @@ export class WebSocketHandler {
    * Handle code review requests
    */
   async handleCodeReview(ws: WebSocket, data: any) {
-    const { code, category, language } = data;
-    
+    const { code, category, language, rules } = data;
+
     // Generate review ID early to prevent duplicates
     const reviewId = CodeReviewService.generateReviewId();
-    
+
     try {
       // Validate language BEFORE starting the review process
       const { validateLanguage } = await import('./code-review-service');
       const validation = validateLanguage(code, language || 'javascript');
-      
+
       if (!validation.isValid) {
         const errorMessage = validation.errorMessage || "Language validation failed";
         const suggestion = validation.suggestion ? `\n\nSuggestion: ${validation.suggestion}` : "";
-        
-        ws.send(JSON.stringify({ 
-          type: "language_error", 
+
+        ws.send(JSON.stringify({
+          type: "language_error",
           error: errorMessage,
           suggestion: validation.suggestion || "Please check your language selection and try again."
         }));
         return; // Stop processing
       }
-      
+
       // Add to conversation history
       this.state.history.push({
         role: "user",
         content: `Review this ${language || 'code'} (${category} analysis):\n${code.slice(0, 500)}...`,
         timestamp: Date.now()
       });
-      
+
       // Send initial acknowledgment AFTER validation passes
-      ws.send(JSON.stringify({ 
-        type: "stream", 
+      ws.send(JSON.stringify({
+        type: "stream",
         stage: "init",
-        text: `Starting ${category} review for ${language || 'code'}...` 
+        text: `Starting ${category} review for ${language || 'code'}...`
       }));
 
       // Create review object early
-      const review = {
+      const review: {
+        id: string;
+        code: string;
+        category: string;
+        language: string;
+        result: string;
+        timestamp: number;
+        findings: ReviewFinding[];
+        summary: string;
+      } = {
         id: reviewId,
         code: code.slice(0, 2000),
         category,
         language,
         result: '',
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        findings: [],
+        summary: ''
       };
 
       // Perform the review using our service
       const fullResponse = await CodeReviewService.performReview(
-        this.env.AI, 
-        { code, category, language },
+        this.env.AI,
+        { code, category, language, rules },
         (chunk) => {
-          ws.send(JSON.stringify({ 
-            type: "stream", 
+          ws.send(JSON.stringify({
+            type: "stream",
             stage: "analysis",
-            text: chunk 
+            text: chunk
           }));
         }
       );
-      
+
       // Update the review with the result
       review.result = fullResponse;
-      
+
       // Only add ONE review to the state
       this.state.reviews.push(review);
       this.state.history.push({
@@ -128,11 +139,31 @@ export class WebSocketHandler {
         timestamp: Date.now()
       });
 
-      // Send completion
-      ws.send(JSON.stringify({ 
-        type: "done", 
-        review 
+      // Send completion (prose result — kept working for existing consumers)
+      ws.send(JSON.stringify({
+        type: "done",
+        review
       }));
+
+      // Structured findings are computed as a follow-up, non-streamed step
+      // once the prose finishes streaming. This must never break the
+      // already-sent "done" review above.
+      try {
+        const structured = await CodeReviewService.generateStructuredReview(
+          this.env.AI,
+          { code, category, language, rules }
+        );
+        review.findings = structured.findings;
+        review.summary = structured.summary;
+
+        ws.send(JSON.stringify({
+          type: "findings",
+          findings: structured.findings,
+          summary: structured.summary
+        }));
+      } catch (findingsError) {
+        ws.send(JSON.stringify({ type: "findings", findings: [], summary: '' }));
+      }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "AI model error";

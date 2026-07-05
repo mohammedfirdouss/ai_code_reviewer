@@ -8,11 +8,24 @@ import {
 } from 'lucide-react'
 import './App.css'
 
+interface ReviewFinding {
+  line?: number;
+  endLine?: number;
+  severity: 'critical' | 'important' | 'nitpick';
+  category: string;
+  summary: string;
+  detail?: string;
+  suggestion?: string;
+  confidence: number;
+}
+
 interface Message {
   type: 'user' | 'agent' | 'system';
   content: string;
   timestamp: number;
   reviewMeta?: { category: string; language: string };
+  findings?: ReviewFinding[];
+  findingsSummary?: string;
 }
 
 interface Review {
@@ -22,6 +35,8 @@ interface Review {
   language: string;
   category: string;
   code: string;
+  findings?: ReviewFinding[];
+  summary?: string;
 }
 
 interface Toast {
@@ -38,6 +53,13 @@ const CATEGORY_META: Record<string, { label: string; color: CategoryColor; icon:
   performance: { label: 'Performance', color: 'warn', icon: Zap },
   documentation: { label: 'Docs', color: 'info', icon: Book },
 };
+
+const SEVERITY_META: Record<ReviewFinding['severity'], { label: string; color: CategoryColor }> = {
+  critical: { label: 'Critical', color: 'del' },
+  important: { label: 'Important', color: 'warn' },
+  nitpick: { label: 'Nitpick', color: 'info' },
+};
+const SEVERITY_ORDER: ReviewFinding['severity'][] = ['critical', 'important', 'nitpick'];
 
 function App() {
   const [ws, setWs] = useState<WebSocket | null>(null);
@@ -56,6 +78,8 @@ function App() {
   const [filterLanguage, setFilterLanguage] = useState<string>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [rules, setRules] = useState('');
+  const [rulesOpen, setRulesOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const codeTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -67,6 +91,7 @@ function App() {
   const reconnectAttemptsRef = useRef(0);
   const isStreamingActiveRef = useRef(false);
   const reviewsLoadedRef = useRef(false);
+  const lastReviewIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     connectWebSocket();
@@ -305,7 +330,27 @@ function App() {
           if (exists) return prev;
           return [newReview, ...prev];
         });
+        lastReviewIdRef.current = newReview.id;
         showToast('Review completed!', 'success');
+        break;
+      }
+      case 'findings': {
+        // Structured findings arrive as a follow-up step after the prose
+        // review has already finished streaming and 'done' fired.
+        const findings: ReviewFinding[] = Array.isArray(data.findings) ? data.findings : [];
+        const summary: string = typeof data.summary === 'string' ? data.summary : '';
+        setMessages(prev => {
+          const lastMsg = prev[prev.length - 1];
+          if (!lastMsg || lastMsg.type !== 'agent') return prev;
+          const stamped = { ...lastMsg, findings, findingsSummary: summary };
+          return [...prev.slice(0, -1), stamped];
+        });
+        const reviewId = lastReviewIdRef.current;
+        if (reviewId) {
+          setReviews(prev => prev.map(review =>
+            review.id === reviewId ? { ...review, findings, summary } : review
+          ));
+        }
         break;
       }
       case 'language_error':
@@ -375,7 +420,8 @@ function App() {
       type: 'submit_code',
       code,
       category,
-      language
+      language,
+      rules: rules.trim() || undefined
     }));
   };
 
@@ -397,9 +443,17 @@ function App() {
   const viewReview = (review: Review) => {
     setCurrentReview(review);
     setActiveTab('chat');
+    lastReviewIdRef.current = review.id;
     setMessages([
       { type: 'user', content: `Viewing review: ${review.language} ${review.category} review`, timestamp: Date.now() },
-      { type: 'agent', content: review.result, timestamp: review.timestamp, reviewMeta: { category: review.category, language: review.language } }
+      {
+        type: 'agent',
+        content: review.result,
+        timestamp: review.timestamp,
+        reviewMeta: { category: review.category, language: review.language },
+        findings: review.findings,
+        findingsSummary: review.summary
+      }
     ]);
   };
 
@@ -634,6 +688,29 @@ function App() {
                       className="code-textarea"
                       rows={12}
                     />
+                  </div>
+
+                  <div className="form-group">
+                    <button
+                      type="button"
+                      className="rules-toggle"
+                      onClick={() => setRulesOpen(!rulesOpen)}
+                      aria-expanded={rulesOpen}
+                      aria-controls="rules"
+                    >
+                      <ChevronRight className={`icon-xs rules-toggle-icon ${rulesOpen ? 'open' : ''}`} />
+                      <span>Project conventions (optional)</span>
+                    </button>
+                    {rulesOpen && (
+                      <textarea
+                        id="rules"
+                        value={rules}
+                        onChange={(e) => setRules(e.target.value)}
+                        placeholder="e.g. Prefer functional components, no default exports, use snake_case for SQL columns..."
+                        className="code-textarea rules-textarea"
+                        rows={4}
+                      />
+                    )}
                   </div>
 
                   <div className="form-actions">
@@ -903,6 +980,57 @@ function App() {
                           })}
                         </div>
                       </div>
+                      {msg.findings && msg.findings.length > 0 && (
+                        <div className="findings">
+                          {msg.findingsSummary && (
+                            <p className="findings-summary">{msg.findingsSummary}</p>
+                          )}
+                          {SEVERITY_ORDER.map((sev) => {
+                            const items = msg.findings!.filter(f => f.severity === sev);
+                            if (items.length === 0) return null;
+                            const meta = SEVERITY_META[sev];
+                            return (
+                              <div key={sev} className="findings-group">
+                                <div className="findings-group-label">
+                                  {meta.label} <span className="findings-group-count">({items.length})</span>
+                                </div>
+                                {items.map((finding, i) => (
+                                  <div
+                                    key={i}
+                                    className="finding"
+                                    style={{ borderLeftColor: `var(--${meta.color})` }}
+                                  >
+                                    <div className="finding-header">
+                                      <span className={`review-category review-category--${meta.color}`}>
+                                        {meta.label}
+                                      </span>
+                                      <span className="review-language">{finding.category}</span>
+                                      {typeof finding.line === 'number' && (
+                                        <span className="finding-line">
+                                          Line {finding.line}
+                                          {finding.endLine && finding.endLine !== finding.line ? `–${finding.endLine}` : ''}
+                                        </span>
+                                      )}
+                                      <span className="finding-confidence">
+                                        {Math.round(finding.confidence)}% confidence
+                                      </span>
+                                    </div>
+                                    <div className="finding-summary">{finding.summary}</div>
+                                    {finding.detail && (
+                                      <div className="finding-detail">{finding.detail}</div>
+                                    )}
+                                    {finding.suggestion && (
+                                      <div className="finding-suggestion">
+                                        <strong>Suggestion:</strong> {finding.suggestion}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
