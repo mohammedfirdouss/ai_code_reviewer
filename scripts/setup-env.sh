@@ -2,7 +2,6 @@
 
 # Environment setup script for AI Code Reviewer
 echo "AI Code Reviewer - Environment Setup"
-echo "======================================"
 
 # Colors
 GREEN='\033[0;32m'

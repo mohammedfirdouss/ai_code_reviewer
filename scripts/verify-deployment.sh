@@ -2,7 +2,6 @@
 
 # Post-deployment verification script
 echo "AI Code Reviewer - Post-deployment Verification"
-echo "================================================="
 
 # Colors
 GREEN='\033[0;32m'

@@ -2,7 +2,6 @@
 
 # Pre-deployment check script for Cloudflare Workers
 echo "AI Code Reviewer - Pre-deployment Check"
-echo "=========================================="
 
 # Colors for output
 RED='\033[0;31m'
