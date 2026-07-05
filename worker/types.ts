@@ -156,6 +156,27 @@ export interface CodeReviewRequest {
   code: string;
   category: 'quick' | 'security' | 'performance' | 'documentation';
   language?: string;
+  // Optional free-text, CLAUDE.md-style project conventions. When present,
+  // reviews additionally check compliance with these project-specific rules.
+  rules?: string;
+}
+
+// A single structured finding produced by the review engine.
+export interface ReviewFinding {
+  line?: number;       // best-effort line number within the submitted `code` string (1-indexed), omit if not localizable
+  endLine?: number;     // optional, for multi-line findings
+  severity: 'critical' | 'important' | 'nitpick';
+  category: string;     // e.g. 'bug' | 'security' | 'performance' | 'documentation' | 'style' | 'guideline'
+  summary: string;       // one-line description
+  detail?: string;       // longer explanation
+  suggestion?: string;   // suggested fix
+  confidence: number;    // 0-100, set by the INDEPENDENT confidence pass, not self-reported by the finding-generating call
+}
+
+// The structured output of a full review: merged, deduped, confidence-scored findings.
+export interface StructuredReview {
+  findings: ReviewFinding[];
+  summary: string;       // 1-3 sentence overall summary
 }
 
 // Review state stored in Durable Object
@@ -167,6 +188,8 @@ export interface ReviewState {
     category: string;
     result: string;
     timestamp: number;
+    findings?: ReviewFinding[];
+    summary?: string;
   }>;
 }
 

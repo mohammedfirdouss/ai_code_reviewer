@@ -1,4 +1,9 @@
-import { CodeReviewRequest } from "../types";
+import { CodeReviewRequest, ReviewFinding, StructuredReview } from "../types";
+
+// The single Workers AI model backing every review pass (main prose, lenses,
+// and the confidence pass). Kept as one constant so all AI.run() calls stay
+// on a model that is actually available/verified on this account.
+const REVIEW_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 // Language detection patterns — tested against raw (case-sensitive) code
 const LANGUAGE_PATTERNS: Record<string, RegExp[]> = {
@@ -148,12 +153,97 @@ const SYSTEM_PROMPTS = {
                   Review documentation quality and suggest improvements: function/class documentation, inline comments, README updates, API documentation, and code clarity.`
 };
 
+// ─── Narrow-scope "lens" prompts (part B) ─────────────────────────────────
+// Each lens is a single-purpose pass over the code, returning only findings
+// within its narrow focus as JSON. Several lenses run concurrently per
+// review and their findings are merged.
+
+interface LensDef {
+  id: string;
+  defaultCategory: string;
+  instruction: string;
+}
+
+const LENS_DEFS: Record<string, LensDef> = {
+  bug: {
+    id: 'bug',
+    defaultCategory: 'bug',
+    instruction: `Find only concrete bugs and correctness issues: logic errors, off-by-one errors, null/undefined handling, race conditions, unhandled exceptions/rejections, incorrect API usage, resource leaks. Ignore style, formatting, documentation, and pure performance concerns.`,
+  },
+  security: {
+    id: 'security',
+    defaultCategory: 'security',
+    instruction: `Find only security vulnerabilities per the OWASP Top 10: injection (SQL/XSS/command/etc.), broken authentication/authorization, sensitive data exposure, insecure input validation, cryptographic weaknesses, insecure dependencies or deserialization. Ignore style and non-security bugs.`,
+  },
+  performance: {
+    id: 'performance',
+    defaultCategory: 'performance',
+    instruction: `Find only performance issues: algorithmic complexity (Big O), memory usage/leaks, inefficient database or network calls, missed caching opportunities, blocking operations, unnecessary re-computation, scalability concerns. Ignore style and security.`,
+  },
+  style: {
+    id: 'style',
+    defaultCategory: 'style',
+    instruction: `Find only style, documentation, and project-guideline compliance issues: missing/incorrect comments or docstrings, unclear naming, inconsistent formatting, missing API documentation. If a finding is specifically a violation of the project-specific rules supplied below, set its "category" field to "guideline" instead of "style". Ignore bugs, security, and performance issues.`,
+  },
+};
+
+// Which lenses run for each review category. 2-3 narrow passes per review,
+// chosen to be sensible for that category rather than running all lenses
+// every time.
+const CATEGORY_LENSES: Record<string, string[]> = {
+  quick: ['bug', 'style'],
+  security: ['security', 'bug'],
+  performance: ['performance', 'bug'],
+  documentation: ['style', 'bug'],
+};
+
+const FINDINGS_JSON_INSTRUCTIONS = `Respond with ONLY a single fenced code block, tagged \`\`\`json, containing a JSON array of findings — nothing before or after it. If there are no findings, respond with an empty array: \`\`\`json\n[]\n\`\`\`
+
+Each element of the array must match this exact shape:
+{
+  "line": <integer, optional, best-effort 1-indexed line number within the submitted code>,
+  "endLine": <integer, optional, for multi-line findings>,
+  "severity": "critical" | "important" | "nitpick",
+  "category": "bug" | "security" | "performance" | "documentation" | "style" | "guideline",
+  "summary": "<one-line description of the issue>",
+  "detail": "<optional, longer explanation>",
+  "suggestion": "<optional, suggested fix>"
+}
+
+Do not include a "confidence" field — confidence is scored separately.`;
+
+// ─── Confidence + false-positive filtering pass (part C) ──────────────────
+// Rubric adapted from Anthropic's own code-review plugin.
+const CONFIDENCE_RUBRIC = `Rate each finding's confidence from 0-100 using this rubric:
+- 0: not confident at all — false positive, or a pre-existing issue unrelated to review scope
+- 25: somewhat confident — might be real, might not; unverified
+- 50: moderately confident — verified real, but minor/nitpick
+- 75: highly confident — verified, will matter in practice
+- 100: absolutely certain — critical, definitely real
+
+Common false-positive patterns to watch for and score low:
+- Pre-existing issues not introduced by, or unrelated to, the reviewed code
+- Things that look like bugs but are actually intentional/correct behavior
+- Pedantic nitpicks a senior engineer wouldn't bother raising
+- Issues a linter, type-checker, or compiler would already catch automatically
+- Issues explicitly silenced by a comment (e.g. eslint-disable, // noqa, # type: ignore)
+- Intentional or likely-deliberate design choices, even if unconventional`;
+
 export class CodeReviewService {
   /**
-   * Get system prompt based on review category
+   * Get system prompt based on review category, optionally folding in
+   * user-supplied project rules (part D).
    */
-  static getSystemPrompt(category: string): string {
-    return SYSTEM_PROMPTS[category as keyof typeof SYSTEM_PROMPTS] || SYSTEM_PROMPTS.quick;
+  static getSystemPrompt(category: string, rules?: string): string {
+    const base = SYSTEM_PROMPTS[category as keyof typeof SYSTEM_PROMPTS] || SYSTEM_PROMPTS.quick;
+    return this.withRules(base, rules);
+  }
+
+  private static withRules(prompt: string, rules?: string): string {
+    if (rules && rules.trim()) {
+      return `${prompt}\n\nAdditionally check compliance with these project-specific rules:\n${rules.trim()}`;
+    }
+    return prompt;
   }
 
   /**
@@ -179,12 +269,12 @@ export class CodeReviewService {
     data: CodeReviewRequest,
     onChunk: (chunk: string) => void
   ): Promise<string> {
-    const { code, category, language } = data;
-    const systemPrompt = this.getSystemPrompt(category);
+    const { code, category, language, rules } = data;
+    const systemPrompt = this.getSystemPrompt(category, rules);
 
     try {
       const response = await ai.run(
-        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        REVIEW_MODEL,
         {
           messages: [
             { role: "system", content: systemPrompt },
@@ -221,5 +311,209 @@ export class CodeReviewService {
     } catch (error) {
       throw new Error(`AI review failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Produce a structured review: run narrow-scope lenses concurrently (B),
+   * merge + lightly dedup their findings, then run an independent
+   * confidence/false-positive pass over the merged list (C). Never throws —
+   * on any failure this degrades to an empty findings list / neutral
+   * confidence rather than breaking the surrounding review flow.
+   */
+  static async generateStructuredReview(
+    ai: any,
+    data: CodeReviewRequest
+  ): Promise<StructuredReview> {
+    try {
+      const { code, category, language, rules } = data;
+      const lensIds = CATEGORY_LENSES[category] || CATEGORY_LENSES.quick;
+
+      const lensResults = await Promise.all(
+        lensIds.map((id) => this.runLens(ai, id, code, language, rules))
+      );
+
+      const merged = this.dedupeFindings(lensResults.flat());
+      if (merged.length === 0) {
+        return { findings: [], summary: 'No issues found.' };
+      }
+
+      return await this.scoreConfidenceAndSummarize(ai, code, merged);
+    } catch (error) {
+      // Absolute last-resort fallback — generateStructuredReview must never throw.
+      return { findings: [], summary: '' };
+    }
+  }
+
+  /**
+   * Run a single narrow-scope lens and parse its findings JSON.
+   */
+  private static async runLens(
+    ai: any,
+    lensId: string,
+    code: string,
+    language: string | undefined,
+    rules: string | undefined
+  ): Promise<ReviewFinding[]> {
+    const lens = LENS_DEFS[lensId];
+    if (!lens) return [];
+
+    const systemPrompt = this.withRules(
+      `You are an expert code reviewer performing a single, narrow-focus pass on submitted code. ${lens.instruction}\n\n${FINDINGS_JSON_INSTRUCTIONS}`,
+      rules
+    );
+
+    try {
+      const response = await ai.run(REVIEW_MODEL, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: this.formatCodeForReview(code, language) }
+        ],
+        stream: false,
+      });
+
+      const text = await this.collectResponseText(response);
+      return this.parseFindingsJson(text, lens.defaultCategory);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Collect full text from a Workers AI response, whether it came back as
+   * an async-iterable stream or a plain { response } object.
+   */
+  private static async collectResponseText(response: any): Promise<string> {
+    if (response && typeof response[Symbol.asyncIterator] === 'function') {
+      let text = '';
+      for await (const chunk of response) {
+        text += chunk?.response || '';
+      }
+      return text;
+    }
+    return response?.response || '';
+  }
+
+  /**
+   * Parse a model's fenced ```json findings array, tolerating models that
+   * wrap it in prose or forget the language tag. Never throws.
+   */
+  private static parseFindingsJson(text: string, defaultCategory: string): ReviewFinding[] {
+    try {
+      const fenced = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/```\s*([\s\S]*?)```/);
+      const jsonStr = (fenced ? fenced[1] : text).trim();
+      const parsed = JSON.parse(jsonStr);
+      if (!Array.isArray(parsed)) return [];
+
+      const validSeverities = new Set(['critical', 'important', 'nitpick']);
+
+      return parsed
+        .filter((f: any) => f && typeof f.summary === 'string' && f.summary.trim())
+        .map((f: any): ReviewFinding => ({
+          line: typeof f.line === 'number' && Number.isFinite(f.line) ? Math.max(1, Math.round(f.line)) : undefined,
+          endLine: typeof f.endLine === 'number' && Number.isFinite(f.endLine) ? Math.max(1, Math.round(f.endLine)) : undefined,
+          severity: validSeverities.has(f.severity) ? f.severity : 'nitpick',
+          category: typeof f.category === 'string' && f.category.trim() ? f.category.trim() : defaultCategory,
+          summary: String(f.summary).trim().slice(0, 300),
+          detail: typeof f.detail === 'string' && f.detail.trim() ? f.detail.trim().slice(0, 2000) : undefined,
+          suggestion: typeof f.suggestion === 'string' && f.suggestion.trim() ? f.suggestion.trim().slice(0, 1000) : undefined,
+          confidence: 50, // placeholder — overwritten by the independent confidence pass
+        }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Light dedup: drop findings that share a line number and a near-identical
+   * summary (case/whitespace-insensitive prefix match).
+   */
+  private static dedupeFindings(findings: ReviewFinding[]): ReviewFinding[] {
+    const seen = new Set<string>();
+    const result: ReviewFinding[] = [];
+    for (const finding of findings) {
+      const key = `${finding.line ?? 'none'}:${finding.summary.toLowerCase().trim().replace(/\s+/g, ' ').slice(0, 48)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(finding);
+    }
+    return result;
+  }
+
+  /**
+   * Independent confidence pass (part C): one more ai.run() call, given the
+   * original code and the merged findings (without confidence scores), asks
+   * the model to score each finding per the rubric and produce an overall
+   * summary. Falls back to confidence 50 for every finding if the pass
+   * fails or its output doesn't parse. Never throws.
+   */
+  private static async scoreConfidenceAndSummarize(
+    ai: any,
+    code: string,
+    findings: ReviewFinding[]
+  ): Promise<StructuredReview> {
+    const indexed = findings.map(({ confidence, ...rest }, index) => ({ index, ...rest }));
+
+    const systemPrompt = `You are an expert code reviewer performing an independent confidence review. You will be given the original code and a list of findings raised by other reviewers. You did not write these findings — verify each one against the actual code with a skeptical, senior-engineer eye.
+
+${CONFIDENCE_RUBRIC}
+
+Respond with ONLY a single fenced code block, tagged \`\`\`json, containing a JSON object of this exact shape — nothing before or after it:
+{
+  "summary": "<1-3 sentence overall summary of the code and the findings>",
+  "scores": [ { "index": <integer, matching the finding's index>, "confidence": <integer 0-100> }, ... ]
+}
+Include one entry in "scores" for every finding index given to you.`;
+
+    const userPrompt = `Original code:\n\`\`\`\n${code}\n\`\`\`\n\nFindings to verify (JSON):\n${JSON.stringify(indexed, null, 2)}`;
+
+    try {
+      const response = await ai.run(REVIEW_MODEL, {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        stream: false,
+      });
+
+      const text = await this.collectResponseText(response);
+      const fenced = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/```\s*([\s\S]*?)```/);
+      const parsed = JSON.parse((fenced ? fenced[1] : text).trim());
+
+      const scores: Record<number, number> = {};
+      if (Array.isArray(parsed?.scores)) {
+        for (const entry of parsed.scores) {
+          if (typeof entry?.index === 'number' && typeof entry?.confidence === 'number') {
+            scores[entry.index] = Math.max(0, Math.min(100, Math.round(entry.confidence)));
+          }
+        }
+      }
+
+      const summary = typeof parsed?.summary === 'string' && parsed.summary.trim()
+        ? parsed.summary.trim().slice(0, 500)
+        : this.fallbackSummary(findings);
+
+      const scoredFindings = findings
+        .map((finding, index) => ({ ...finding, confidence: scores[index] ?? 50 }))
+        .sort((a, b) => b.confidence - a.confidence);
+
+      return { findings: scoredFindings, summary };
+    } catch (error) {
+      const scoredFindings = findings
+        .map((finding) => ({ ...finding, confidence: 50 }))
+        .sort((a, b) => b.confidence - a.confidence);
+      return { findings: scoredFindings, summary: this.fallbackSummary(findings) };
+    }
+  }
+
+  private static fallbackSummary(findings: ReviewFinding[]): string {
+    if (findings.length === 0) return 'No issues found.';
+    const critical = findings.filter((f) => f.severity === 'critical').length;
+    const important = findings.filter((f) => f.severity === 'important').length;
+    const nitpick = findings.filter((f) => f.severity === 'nitpick').length;
+    const parts: string[] = [];
+    if (critical) parts.push(`${critical} critical`);
+    if (important) parts.push(`${important} important`);
+    if (nitpick) parts.push(`${nitpick} nitpick`);
+    return `Found ${findings.length} finding${findings.length === 1 ? '' : 's'}: ${parts.join(', ')}.`;
   }
 }
