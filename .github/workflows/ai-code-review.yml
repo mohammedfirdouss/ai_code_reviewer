@@ -2,7 +2,7 @@ name: AI Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '**/*.js'
       - '**/*.jsx'
@@ -35,42 +35,98 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get changed files
-        id: changed-files
+      - name: Triage — determine eligible files
+        id: triage
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
-          git diff --name-only \
-            ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} \
+          mkdir -p review-results
+          : > review-results/skipped.md
+
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "Pull request is a draft — skipping AI review."
+            echo "has-code-changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Extension allowlist, then drop generated/vendored/lockfile paths that
+          # aren't worth spending a review call on.
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" \
             | grep -E '\.(js|jsx|ts|tsx|py|java|c|cpp|cs|go|rs|php|rb|swift|kt)$' \
-            > code_files.txt || true
+            | grep -viE '(^|/)(node_modules|vendor|dist|build)/|(^|/)package-lock\.json$|\.lock$|\.min\.js$' \
+            > candidate_files.txt || true
+
+          if [ ! -s candidate_files.txt ]; then
+            echo "No eligible code files changed (after extension/vendor/lockfile filtering)."
+            echo "has-code-changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          : > code_files.txt
+          while IFS= read -r file; do
+            [ -f "$file" ] || continue
+
+            raw_diff=$(git diff -U3 "$BASE_SHA" "$HEAD_SHA" -- "$file")
+            if [ -z "$raw_diff" ]; then
+              continue
+            fi
+
+            # Whitespace/formatting-only change: the diff disappears once
+            # whitespace and blank-line changes are ignored.
+            ws_diff=$(git diff -w --ignore-blank-lines "$BASE_SHA" "$HEAD_SHA" -- "$file")
+            if [ -z "$ws_diff" ]; then
+              echo "Skipping $file: whitespace/formatting-only change"
+              echo "- \`$file\`: whitespace/formatting-only change, skipped" >> review-results/skipped.md
+              continue
+            fi
+
+            # Cheap guard against a runaway API bill on huge diffs.
+            changed_lines=$(printf '%s\n' "$raw_diff" | grep -cE '^[+-][^+-]' || true)
+            if [ "$changed_lines" -gt 600 ]; then
+              echo "Skipping $file: diff too large ($changed_lines changed lines)"
+              echo "- \`$file\`: diff too large ($changed_lines changed lines), skipped" >> review-results/skipped.md
+              continue
+            fi
+
+            echo "$file" >> code_files.txt
+          done < candidate_files.txt
 
           if [ -s code_files.txt ]; then
-            echo "has-code-changes=true" >> $GITHUB_OUTPUT
-            echo "Changed files:"
+            echo "has-code-changes=true" >> "$GITHUB_OUTPUT"
+            echo "Files to review:"
             cat code_files.txt
           else
-            echo "has-code-changes=false" >> $GITHUB_OUTPUT
-            echo "No code files changed"
+            echo "has-code-changes=false" >> "$GITHUB_OUTPUT"
+            echo "No eligible files remain after whitespace/size filtering"
           fi
 
       - name: Review changed files via REST API
-        if: steps.changed-files.outputs.has-code-changes == 'true'
+        if: steps.triage.outputs.has-code-changes == 'true'
+        shell: bash
         env:
           API_ENDPOINT: ${{ vars.AI_CODE_REVIEWER_ENDPOINT || 'https://ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          mkdir -p review-results
           echo "# AI Code Review Results" > review-results/summary.md
           echo "" >> review-results/summary.md
           echo "**PR:** #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}" >> review-results/summary.md
           echo "" >> review-results/summary.md
 
+          : > review-results/inline_comments.jsonl
+
           total=0
           flagged=0
+
+          RULES="This is a unified diff. Only comment on added or changed lines, i.e. lines starting with a plus sign in the diff, excluding the +++ file header line. Report the line field as the target-file line number implied by the @@ hunk headers in the diff, not the position within the diff text."
 
           while IFS= read -r file; do
             [ -f "$file" ] || continue
             total=$((total + 1))
 
-            # Detect language from extension
             ext="${file##*.}"
             case "$ext" in
               js|jsx)  lang="javascript" ;;
@@ -90,21 +146,46 @@ jobs:
 
             echo "Reviewing $file ($lang)..."
 
-            # Read file content (limit to 4000 chars to stay within request size)
-            code=$(head -c 4000 "$file")
+            diff_text=$(git diff -U3 "$BASE_SHA" "$HEAD_SHA" -- "$file")
 
-            # Call the REST API
+            # Target-file line numbers of added lines, derived from the same
+            # diff we send. Used to sanity-check any line number the model
+            # reports before we trust it enough to post an inline comment.
+            valid_lines=$(printf '%s\n' "$diff_text" | awk '
+              /^@@/ {
+                line = $0
+                sub(/^@@ -[0-9]+(,[0-9]+)? \+/, "", line)
+                split(line, parts, /[ ,]/)
+                newline = parts[1] + 0
+                next
+              }
+              /^\+\+\+/ { next }
+              /^---/ { next }
+              /^\+/ { print newline; newline++; next }
+              /^-/ { next }
+              /^ / { newline++; next }
+            ')
+
             response=$(curl -s -w "\n%{http_code}" \
               -X POST "$API_ENDPOINT/api/review" \
               -H "Content-Type: application/json" \
               -d "$(jq -n \
-                --arg code "$code" \
+                --arg code "$diff_text" \
                 --arg language "$lang" \
                 --arg category "security" \
-                '{code: $code, language: $language, category: $category}'
+                --arg rules "$RULES" \
+                '{code: $code, language: $language, category: $category, rules: $rules}'
               )" \
               --max-time 60) || {
               echo "Request failed for $file" >&2
+              {
+                echo "## \`$file\`"
+                echo ""
+                echo "_Review request failed._"
+                echo ""
+                echo "---"
+                echo ""
+              } >> review-results/summary.md
               continue
             }
 
@@ -113,26 +194,133 @@ jobs:
 
             if [ "$http_code" != "200" ]; then
               echo "API returned $http_code for $file" >&2
+              {
+                echo "## \`$file\`"
+                echo ""
+                echo "_API returned HTTP $http_code — review unavailable._"
+                echo ""
+                echo "---"
+                echo ""
+              } >> review-results/summary.md
               continue
             fi
 
-            review_text=$(echo "$body" | jq -r '.review.result // "No review returned"')
+            findings_count=$(echo "$body" | jq '[.review.findings // [] | .[]] | length')
+
+            if [ "$findings_count" -eq 0 ]; then
+              # Backend hasn't returned structured findings for this call (either
+              # not deployed yet, or it genuinely found nothing structured) —
+              # fall back to today's prose-dump behavior.
+              review_text=$(echo "$body" | jq -r '.review.result // "No review returned"')
+
+              {
+                echo "## \`$file\`"
+                echo ""
+                echo "$review_text"
+                echo ""
+                echo "---"
+                echo ""
+              } >> review-results/summary.md
+
+              if echo "$review_text" | grep -qiE '\b(issue|vulnerability|bug|insecure|problem)\b'; then
+                flagged=$((flagged + 1))
+              fi
+
+              continue
+            fi
+
+            # Structured findings are available. High-confidence, line-anchored
+            # critical/important findings become inline review comments;
+            # everything else (nitpicks, low-confidence, unmapped lines) goes
+            # into the overall summary comment instead, to avoid PR spam.
+            file_flagged=0
+            file_summary_block=""
+
+            while IFS= read -r finding; do
+              severity=$(echo "$finding" | jq -r '.severity // ""')
+              confidence=$(echo "$finding" | jq -r '.confidence // 0')
+              f_line=$(echo "$finding" | jq -r '.line // ""')
+              f_summary=$(echo "$finding" | jq -r '.summary // "(no summary)"')
+              f_detail=$(echo "$finding" | jq -r '.detail // ""')
+              f_suggestion=$(echo "$finding" | jq -r '.suggestion // ""')
+              f_category=$(echo "$finding" | jq -r '.category // "general"')
+
+              is_high_sev=false
+              case "$severity" in
+                critical|important) is_high_sev=true ;;
+              esac
+
+              is_confident=false
+              if [ -n "$confidence" ] && awk "BEGIN{exit !($confidence >= 60)}"; then
+                is_confident=true
+              fi
+
+              line_ok=false
+              if [ -n "$f_line" ] && [ "$f_line" != "null" ]; then
+                if printf '%s\n' "$valid_lines" | grep -qx "$f_line"; then
+                  line_ok=true
+                fi
+              fi
+
+              if [ "$is_high_sev" = true ] && [ "$is_confident" = true ] && [ "$line_ok" = true ]; then
+                file_flagged=1
+                comment_body=$(jq -n -r \
+                  --arg sev "$severity" --arg cat "$f_category" \
+                  --arg summary "$f_summary" --arg detail "$f_detail" --arg suggestion "$f_suggestion" \
+                  '(if $sev == "critical" then "Critical" else "Important" end) as $label |
+                   "**\($label) (\($cat))** — \($summary)" +
+                   (if $detail != "" then "\n\n\($detail)" else "" end) +
+                   (if $suggestion != "" then "\n\n**Suggestion:** \($suggestion)" else "" end)')
+                jq -nc --arg path "$file" --argjson line "$f_line" --arg body "$comment_body" \
+                  '{path: $path, line: $line, body: $body}' >> review-results/inline_comments.jsonl
+              else
+                if [ "$is_high_sev" = true ] && [ "$is_confident" = true ]; then
+                  file_flagged=1
+                fi
+                block=$(jq -n -r \
+                  --arg sev "$severity" --arg cat "$f_category" --arg line "$f_line" \
+                  --arg summary "$f_summary" --arg detail "$f_detail" --arg suggestion "$f_suggestion" \
+                  '"- **\($sev)** (\($cat))" +
+                   (if $line != "" and $line != "null" then " — line \($line)" else "" end) +
+                   ": \($summary)" +
+                   (if $detail != "" then "\n\n  \($detail)" else "" end) +
+                   (if $suggestion != "" then "\n\n  Suggestion: \($suggestion)" else "" end)')
+                file_summary_block="${file_summary_block}${block}"$'\n'
+              fi
+            done < <(echo "$body" | jq -c '.review.findings[]')
+
+            if [ "$file_flagged" -eq 1 ]; then
+              flagged=$((flagged + 1))
+            fi
 
             {
               echo "## \`$file\`"
               echo ""
-              echo "$review_text"
-              echo ""
+              review_summary=$(echo "$body" | jq -r '.review.summary // empty')
+              if [ -n "$review_summary" ]; then
+                echo "$review_summary"
+                echo ""
+              fi
+              if [ -n "$file_summary_block" ]; then
+                echo "$file_summary_block"
+              elif [ "$file_flagged" -eq 1 ]; then
+                echo "_High-confidence findings posted as inline PR review comments._"
+                echo ""
+              fi
               echo "---"
               echo ""
             } >> review-results/summary.md
 
-            # Simple heuristic: flag if the word "issue", "vulnerability", or "bug" appears
-            if echo "$review_text" | grep -qi '\b(issue|vulnerability|bug|insecure|problem)\b'; then
-              flagged=$((flagged + 1))
-            fi
-
           done < code_files.txt
+
+          if [ -s review-results/skipped.md ]; then
+            {
+              echo "## Skipped files"
+              echo ""
+              cat review-results/skipped.md
+              echo ""
+            } >> review-results/summary.md
+          fi
 
           {
             echo "## Summary"
@@ -146,13 +334,43 @@ jobs:
             fi
           } >> review-results/summary.md
 
-      - name: Post review as PR comment
-        if: steps.changed-files.outputs.has-code-changes == 'true'
+      - name: Publish review comments
+        if: steps.triage.outputs.has-code-changes == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
+
+            // Inline, line-anchored comments for high-confidence critical/important
+            // findings — batched into a single review to avoid spamming the PR.
+            const inlinePath = 'review-results/inline_comments.jsonl';
+            let inlineComments = [];
+            if (fs.existsSync(inlinePath)) {
+              inlineComments = fs.readFileSync(inlinePath, 'utf8')
+                .split('\n')
+                .filter(Boolean)
+                .map(line => JSON.parse(line));
+            }
+
+            if (inlineComments.length > 0) {
+              try {
+                await github.rest.pulls.createReview({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  commit_id: context.payload.pull_request.head.sha,
+                  event: 'COMMENT',
+                  body: `AI Code Review found ${inlineComments.length} high-confidence issue(s), posted inline below.`,
+                  comments: inlineComments,
+                });
+              } catch (err) {
+                console.log(`Failed to post inline review comments: ${err.message}`);
+              }
+            }
+
+            // Overall summary — update the existing summary comment if present,
+            // otherwise create a new one.
             const summaryPath = 'review-results/summary.md';
             if (!fs.existsSync(summaryPath)) {
               console.log('No review summary generated');
@@ -161,7 +379,6 @@ jobs:
 
             const body = fs.readFileSync(summaryPath, 'utf8');
 
-            // Update existing comment if one exists, otherwise create
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -187,7 +404,7 @@ jobs:
             }
 
       - name: Upload review artifacts
-        if: steps.changed-files.outputs.has-code-changes == 'true'
+        if: steps.triage.outputs.has-code-changes == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ai-review-results
