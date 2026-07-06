@@ -23,7 +23,6 @@ interface Message {
   type: 'user' | 'agent' | 'system';
   content: string;
   timestamp: number;
-  reviewMeta?: { category: string; language: string };
   findings?: ReviewFinding[];
   findingsSummary?: string;
 }
@@ -322,12 +321,6 @@ function App() {
           category: data.review.category || category,
           code: data.review.code || code
         };
-        setMessages(prev => {
-          const lastMsg = prev[prev.length - 1];
-          if (!lastMsg || lastMsg.type !== 'agent') return prev;
-          const stamped = { ...lastMsg, reviewMeta: { category: newReview.category, language: newReview.language } };
-          return [...prev.slice(0, -1), stamped];
-        });
         setReviews(prev => {
           const exists = prev.some(review => review.id === newReview.id);
           if (exists) return prev;
@@ -452,7 +445,6 @@ function App() {
         type: 'agent',
         content: review.result,
         timestamp: review.timestamp,
-        reviewMeta: { category: review.category, language: review.language },
         findings: review.findings,
         findingsSummary: review.summary
       }

@@ -1303,49 +1303,6 @@ body {
   word-wrap: break-word;
 }
 
-/* ─── Verdict stamp ──────────────────────────────────────────────
-   The signature element: once a review finishes, its message gets
-   marked like an inspector's stamp — category and language, nothing
-   fabricated (we don't invent an issue count from unstructured text).
-*/
-.stamp {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  padding: 6px 14px;
-  margin-bottom: var(--sp-3);
-  border: 2px solid var(--stamp-color, var(--brand));
-  border-radius: var(--r-sm);
-  transform: rotate(-1.5deg);
-  background: var(--stamp-tint, var(--brand-dim));
-}
-
-.stamp-head {
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: 18px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--stamp-color, var(--brand));
-  line-height: 1.1;
-}
-
-.stamp-sub {
-  font-family: var(--font-code);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--stamp-color, var(--brand));
-  opacity: 0.75;
-}
-
-.stamp--add  { --stamp-color: var(--add);  --stamp-tint: var(--add-dim); }
-.stamp--del  { --stamp-color: var(--del);  --stamp-tint: var(--del-dim); }
-.stamp--warn { --stamp-color: var(--warn); --stamp-tint: var(--warn-dim); }
-.stamp--info { --stamp-color: var(--info); --stamp-tint: var(--info-dim); }
-
 /* ─── Structured findings (independent confidence-scored pass) ── */
 .findings {
   margin-top: var(--sp-3);
