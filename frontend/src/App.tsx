@@ -230,7 +230,6 @@ function App() {
     socket.onopen = () => {
       setConnected(true);
       reconnectAttemptsRef.current = 0; // Reset on successful connection
-      addMessage('system', 'Connected to AI Code Reviewer');
       showToast('Connected successfully', 'success');
     };
     
@@ -281,6 +280,10 @@ function App() {
       case 'stream':
         isStreamingActiveRef.current = true;
         setStreaming(true);
+        // The "init" stage is just a transient status ping ("Starting review...");
+        // the streaming spinner/indicator already conveys that, so skip it here
+        // and let the visible message start with the first real analysis chunk.
+        if (data.stage === 'init') break;
         setMessages(prev => {
           const lastMsg = prev[prev.length - 1];
           // Accumulate chunks into the last agent message if streaming is active
