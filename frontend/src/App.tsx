@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus, coy } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { 
+import {
   Copy, Check, Search, Moon, Sun, Download,
   TrendingUp, Code, Shield, Zap, Book, X,
-  Sparkles, ChevronRight, Clock, FileCode
+  Sparkles, ChevronRight, Clock, FileCode, Trash2
 } from 'lucide-react'
 import './App.css'
 
@@ -300,11 +300,9 @@ function App() {
             review.result && review.result.trim() !== ''
           );
 
-          setReviews(prev => {
-            const existingIds = new Set(prev.map(r => r.id));
-            const newReviews = validReviews.filter((review: Review) => !existingIds.has(review.id));
-            return [...prev, ...newReviews];
-          });
+          // The server's review list is authoritative — replace rather than
+          // merge, so a delete/clear on the backend is reflected here too.
+          setReviews(validReviews);
           reviewsLoadedRef.current = true;
         } catch (e) {
           addMessage('system', 'Failed to load reviews');
@@ -437,6 +435,27 @@ function App() {
       return;
     }
     ws.send(JSON.stringify({ type: 'list_reviews' }));
+  };
+
+  const deleteReview = (reviewId: string) => {
+    if (!ws || !connected) {
+      showToast('Not connected to server', 'error');
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'delete_review', reviewId }));
+    showToast('Review deleted', 'info');
+  };
+
+  const clearAllReviews = () => {
+    if (!ws || !connected) {
+      showToast('Not connected to server', 'error');
+      return;
+    }
+    if (!window.confirm('Delete all review history? This cannot be undone.')) {
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'clear_reviews' }));
+    showToast('History cleared', 'info');
   };
 
   const viewReview = (review: Review) => {
@@ -759,10 +778,18 @@ function App() {
             <div className="reviews-panel">
               <div className="reviews-header">
                 <h3>Review History</h3>
-                <button onClick={() => { reviewsLoadedRef.current = false; loadReviews(); }} className="refresh-button" title="Refresh reviews">
-                  <Search className="icon-xs" />
-                  Refresh
-                </button>
+                <div className="reviews-header-actions">
+                  <button onClick={() => { reviewsLoadedRef.current = false; loadReviews(); }} className="refresh-button" title="Refresh reviews">
+                    <Search className="icon-xs" />
+                    Refresh
+                  </button>
+                  {reviews.length > 0 && (
+                    <button onClick={clearAllReviews} className="refresh-button" title="Delete all review history">
+                      <Trash2 className="icon-xs" />
+                      Clear all
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="search-filters">
@@ -853,6 +880,13 @@ function App() {
                             title="View review"
                           >
                             <ChevronRight className="icon-xs" />
+                          </button>
+                          <button
+                            className="action-button"
+                            onClick={() => deleteReview(review.id)}
+                            title="Delete review"
+                          >
+                            <Trash2 className="icon-xs" />
                           </button>
                         </div>
                       </div>

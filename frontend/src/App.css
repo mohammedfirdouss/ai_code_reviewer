@@ -624,6 +624,12 @@ body {
   align-items: center;
 }
 
+.reviews-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
 .reviews-header h3 {
   font-family: var(--font-code);
   font-size: 10px;
