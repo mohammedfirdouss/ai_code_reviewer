@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus, coy } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { 
-  Copy, Check, Search, Moon, Sun, Download, Filter, 
-  TrendingUp, Code, Shield, Zap, Book, X, 
+  Copy, Check, Search, Moon, Sun, Download,
+  TrendingUp, Code, Shield, Zap, Book, X,
   Sparkles, ChevronRight, Clock, FileCode
 } from 'lucide-react'
 import './App.css'
@@ -70,7 +70,6 @@ function App() {
   const [streaming, setStreaming] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [activeTab, setActiveTab] = useState<'chat' | 'reviews' | 'stats'>('chat');
-  const [currentReview, setCurrentReview] = useState<Review | null>(null);
   const [darkMode, setDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -84,18 +83,19 @@ function App() {
   const codeTextareaRef = useRef<HTMLTextAreaElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const isUserScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastMessageRef = useRef<string>('');
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const isStreamingActiveRef = useRef(false);
   const reviewsLoadedRef = useRef(false);
   const lastReviewIdRef = useRef<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     connectWebSocket();
     return () => {
-      if (ws) ws.close();
+      wsRef.current?.close();
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -221,7 +221,7 @@ function App() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = import.meta.env.DEV
       ? 'localhost:8787'
-      : 'ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev';
+      : (import.meta.env.VITE_BACKEND_HOST || 'ai-code-reviewer-backend.mohammedfirdousaraoye.workers.dev');
     const wsUrl = `${protocol}//${host}/agent?clientId=${getClientId()}`;
     
     const socket = new WebSocket(wsUrl);
@@ -243,7 +243,6 @@ function App() {
     
     socket.onerror = (error) => {
       console.error('WebSocket error:', error);
-      reconnectAttemptsRef.current++;
       // Only show error message if not already showing one
       if (!lastMessageRef.current.includes('Connection error')) {
         addMessage('system', 'Connection error occurred');
@@ -271,6 +270,7 @@ function App() {
       }, delay);
     };
     
+    wsRef.current = socket;
     setWs(socket);
   };
 
@@ -408,6 +408,11 @@ function App() {
       return;
     }
 
+    if (code.length > 20000) {
+      showToast('Code exceeds the 20,000 character limit', 'error');
+      return;
+    }
+
     isStreamingActiveRef.current = false;
     addMessage('user', `Submitted ${language} code for ${category} review`);
     setStreaming(true);
@@ -423,7 +428,6 @@ function App() {
 
   const handleClear = () => {
     setMessages([]);
-    setCurrentReview(null);
     showToast('Cleared', 'info');
   };
 
@@ -436,7 +440,6 @@ function App() {
   };
 
   const viewReview = (review: Review) => {
-    setCurrentReview(review);
     setActiveTab('chat');
     lastReviewIdRef.current = review.id;
     setMessages([
@@ -682,6 +685,18 @@ function App() {
                       className="code-textarea"
                       rows={12}
                     />
+                    {code.length > 18000 && (
+                      <div
+                        style={{
+                          fontSize: '0.75rem',
+                          textAlign: 'right',
+                          marginTop: '0.25rem',
+                          color: code.length > 20000 ? 'var(--del)' : 'var(--warn)'
+                        }}
+                      >
+                        {code.length.toLocaleString()} / 20,000 characters
+                      </div>
+                    )}
                   </div>
 
                   <div className="form-group">
