@@ -1,4 +1,4 @@
-import { WebSocketMessage, ReviewState, ReviewFinding } from "../types";
+import { WebSocketMessage, ReviewState, ReviewFinding, MAX_CODE_LENGTH } from "../types";
 import { CodeReviewService } from "./code-review-service";
 
 export class WebSocketHandler {
@@ -59,6 +59,15 @@ export class WebSocketHandler {
    */
   async handleCodeReview(ws: WebSocket, data: any) {
     const { code, category, language, rules } = data;
+
+    // Reject oversized code before spending any AI calls on it
+    if (typeof code === 'string' && code.length > MAX_CODE_LENGTH) {
+      ws.send(JSON.stringify({
+        type: "error",
+        error: `Code exceeds the ${MAX_CODE_LENGTH} character limit`
+      }));
+      return;
+    }
 
     // Generate review ID early to prevent duplicates
     const reviewId = CodeReviewService.generateReviewId();

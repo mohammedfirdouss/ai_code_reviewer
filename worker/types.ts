@@ -1,5 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 
+// Maximum accepted length (in characters) for submitted code. Enforced
+// before any AI call is made, on both the HTTP and WebSocket review paths.
+export const MAX_CODE_LENGTH = 20000;
+
 // Environment variables and bindings
 export interface Env {
   CODE_REVIEWER_AGENT: DurableObjectNamespace;
@@ -190,6 +194,9 @@ export interface ReviewState {
     timestamp: number;
     findings?: ReviewFinding[];
     summary?: string;
+    // SHA-256 hash of code+category+language+rules, used to dedup identical
+    // resubmissions on the HTTP /api/review path without storing full code.
+    codeHash?: string;
   }>;
 }
 

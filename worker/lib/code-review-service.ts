@@ -288,10 +288,10 @@ export class CodeReviewService {
 
       if (response && typeof response[Symbol.asyncIterator] === 'function') {
         const decoder = new (globalThis as any).TextDecoder();
-        let sseBuffer = "";
+        const bufferRef = { value: "" };
 
         for await (const chunk of response) {
-          const text = this.extractStreamChunkText(chunk, decoder, (rest) => { sseBuffer = rest; }, sseBuffer);
+          const text = this.extractStreamChunkText(chunk, decoder, bufferRef);
           if (text) {
             fullResponse += text;
             onChunk(text);
@@ -325,22 +325,24 @@ export class CodeReviewService {
    * (`data: {"choices":[{"delta":{"content":"..."}}], ...}\n\n`) with the
    * token living at `choices[0].delta.content` instead. Handle both so a
    * silent backend switch doesn't turn into a silent empty response again.
+   *
+   * `bufferRef` carries any partial SSE frame left over between calls (a
+   * chunk boundary can land mid-frame); callers own the ref and should pass
+   * a fresh `{ value: "" }` per response stream.
    */
   private static extractStreamChunkText(
     chunk: any,
     decoder: any,
-    setBuffer: (rest: string) => void,
-    buffer: string
+    bufferRef: { value: string }
   ): string {
     if (chunk && typeof chunk === 'object' && !(chunk instanceof Uint8Array) && typeof chunk.response === 'string') {
       return chunk.response;
     }
 
     const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(Object.values(chunk));
-    let sseBuffer = buffer + decoder.decode(bytes, { stream: true });
+    const sseBuffer = bufferRef.value + decoder.decode(bytes, { stream: true });
     const frames = sseBuffer.split("\n\n");
-    sseBuffer = frames.pop() || "";
-    setBuffer(sseBuffer);
+    bufferRef.value = frames.pop() || "";
 
     let text = '';
     for (const frame of frames) {
@@ -419,19 +421,25 @@ export class CodeReviewService {
       const text = await this.collectResponseText(response);
       return this.parseFindingsJson(text, lens.defaultCategory);
     } catch (error) {
+      console.error(`[CodeReviewService.runLens] Lens "${lensId}" failed, returning no findings from this lens:`, error);
       return [];
     }
   }
 
   /**
    * Collect full text from a Workers AI response, whether it came back as
-   * an async-iterable stream or a plain { response } object.
+   * an async-iterable stream or a plain { response } object. Reuses
+   * extractStreamChunkText so the async-iterable branch handles both the
+   * legacy `{ response }` shape and raw-bytes SSE frames, same as
+   * performReview's streaming path.
    */
   private static async collectResponseText(response: any): Promise<string> {
     if (response && typeof response[Symbol.asyncIterator] === 'function') {
+      const decoder = new (globalThis as any).TextDecoder();
+      const bufferRef = { value: "" };
       let text = '';
       for await (const chunk of response) {
-        text += chunk?.response || '';
+        text += this.extractStreamChunkText(chunk, decoder, bufferRef);
       }
       return text;
     }
@@ -464,6 +472,7 @@ export class CodeReviewService {
           confidence: 50, // placeholder — overwritten by the independent confidence pass
         }));
     } catch (error) {
+      console.error(`[CodeReviewService.parseFindingsJson] Failed to parse findings JSON for category "${defaultCategory}". Raw text (truncated): ${text.slice(0, 500)}`, error);
       return [];
     }
   }
@@ -543,6 +552,7 @@ Include one entry in "scores" for every finding index given to you.`;
 
       return { findings: scoredFindings, summary };
     } catch (error) {
+      console.error(`[CodeReviewService.scoreConfidenceAndSummarize] Confidence pass failed for ${findings.length} finding(s); falling back to confidence 50 for all:`, error);
       const scoredFindings = findings
         .map((finding) => ({ ...finding, confidence: 50 }))
         .sort((a, b) => b.confidence - a.confidence);
