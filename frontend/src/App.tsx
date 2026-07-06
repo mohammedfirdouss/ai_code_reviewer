@@ -430,7 +430,6 @@ function App() {
 
   const handleClear = () => {
     setMessages([]);
-    setCode('');
     setCurrentReview(null);
     showToast('Cleared', 'info');
   };
@@ -738,7 +737,7 @@ function App() {
                       type="button" 
                       onClick={handleClear}
                       className="clear-button"
-                      title="Clear form"
+                      title="Clear the analysis (keeps your code)"
                     >
                       <X className="icon-sm" />
                       Clear
