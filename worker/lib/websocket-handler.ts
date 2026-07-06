@@ -34,12 +34,28 @@ export class WebSocketHandler {
           break;
           
         case "get_history":
-          ws.send(JSON.stringify({ 
-            type: "history", 
-            history: this.state.history 
+          ws.send(JSON.stringify({
+            type: "history",
+            history: this.state.history
           }));
           break;
-          
+
+        case "delete_review":
+          this.state.reviews = this.state.reviews.filter((r) => r.id !== data.reviewId);
+          ws.send(JSON.stringify({
+            type: "reviews",
+            reviews: this.state.reviews
+          }));
+          break;
+
+        case "clear_reviews":
+          this.state.reviews = [];
+          ws.send(JSON.stringify({
+            type: "reviews",
+            reviews: this.state.reviews
+          }));
+          break;
+
         default:
           ws.send(JSON.stringify({ 
             type: "error", 
