@@ -961,12 +961,6 @@ function App() {
                           {new Date(msg.timestamp).toLocaleTimeString()}
                         </span>
                       </div>
-                      {msg.reviewMeta && (
-                        <div className={`stamp stamp--${CATEGORY_META[msg.reviewMeta.category]?.color || 'add'}`}>
-                          <span className="stamp-head">Reviewed</span>
-                          <span className="stamp-sub">{msg.reviewMeta.category} · {getLanguageName(msg.reviewMeta.language)}</span>
-                        </div>
-                      )}
                       <div className="message-text">
                         <div className="message-content-text">
                           {msg.content.split(/```(\w+)?\n([\s\S]*?)```/).map((part, i, arr) => {
