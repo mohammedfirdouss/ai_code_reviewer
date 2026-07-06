@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { Env, ReviewState, ReviewFinding, StructuredReview } from './types';
+import { Env, ReviewState, ReviewFinding, StructuredReview, MAX_CODE_LENGTH } from './types';
 import { WebSocketHandler } from './lib/websocket-handler';
 
 /**
@@ -134,18 +134,46 @@ export class CodeReviewerAgent extends DurableObject {
           });
         }
 
+        // Reject oversized code before spending any AI calls on it
+        if (typeof code === 'string' && code.length > MAX_CODE_LENGTH) {
+          return new Response(JSON.stringify({
+            error: `Code exceeds the ${MAX_CODE_LENGTH} character limit`
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
         // Validate language before processing
         const { validateLanguage } = await import('./lib/code-review-service');
         const validation = validateLanguage(code, language);
-        
+
         if (!validation.isValid) {
           const errorMessage = validation.errorMessage || "Language validation failed";
           const suggestion = validation.suggestion ? ` ${validation.suggestion}` : "";
-          return new Response(JSON.stringify({ 
+          return new Response(JSON.stringify({
             error: `${errorMessage}${suggestion}`,
             detectedLanguages: validation.detectedLanguages
           }), {
             status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        const validCategory = this.normalizeCategory(category);
+
+        // Dedup cache: if we've already reviewed this exact code (+category,
+        // language, rules) in this DO, return the cached review instead of
+        // re-running up to 4 Workers AI calls from scratch.
+        const codeHash = await this.computeCodeHash(code, validCategory, language, rules);
+        const cachedReview = this.state.reviews.find((r: any) => r.codeHash === codeHash);
+        if (cachedReview) {
+          return new Response(JSON.stringify({
+            success: true,
+            review: cachedReview,
+            cached: true
+          }), {
+            status: 200,
             headers: { "Content-Type": "application/json" }
           });
         }
@@ -161,6 +189,7 @@ export class CodeReviewerAgent extends DurableObject {
           timestamp: number;
           findings: ReviewFinding[];
           summary: string;
+          codeHash: string;
         } = {
           id: reviewId,
           code: code.slice(0, 2000),
@@ -169,7 +198,8 @@ export class CodeReviewerAgent extends DurableObject {
           result: '',
           timestamp: Date.now(),
           findings: [],
-          summary: ''
+          summary: '',
+          codeHash
         };
 
         // Add to conversation history
@@ -284,6 +314,20 @@ export class CodeReviewerAgent extends DurableObject {
     return ['quick', 'security', 'performance', 'documentation'].includes(category)
       ? category as 'quick' | 'security' | 'performance' | 'documentation'
       : 'quick';
+  }
+
+  /**
+   * Compute a SHA-256 hash identifying a review request (code + category +
+   * language + rules), used to dedup identical resubmissions without having
+   * to store the full untruncated code alongside each review.
+   */
+  private async computeCodeHash(code: string, category: string, language: string, rules?: string): Promise<string> {
+    const input = `${code}|${category}|${language}|${rules || ''}`;
+    const data = new TextEncoder().encode(input);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   /**
