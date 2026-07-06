@@ -287,8 +287,11 @@ export class CodeReviewService {
       let fullResponse = "";
 
       if (response && typeof response[Symbol.asyncIterator] === 'function') {
+        const decoder = new (globalThis as any).TextDecoder();
+        let sseBuffer = "";
+
         for await (const chunk of response) {
-          const text = chunk.response || '';
+          const text = this.extractStreamChunkText(chunk, decoder, (rest) => { sseBuffer = rest; }, sseBuffer);
           if (text) {
             fullResponse += text;
             onChunk(text);
@@ -311,6 +314,48 @@ export class CodeReviewService {
     } catch (error) {
       throw new Error(`AI review failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Pull the text token out of one streamed AI.run() chunk.
+   *
+   * Workers AI has shipped two different shapes for this model's stream
+   * items: an older pre-parsed `{ response: string }` object, and a newer
+   * one where each chunk is the raw bytes of an OpenAI-style SSE frame
+   * (`data: {"choices":[{"delta":{"content":"..."}}], ...}\n\n`) with the
+   * token living at `choices[0].delta.content` instead. Handle both so a
+   * silent backend switch doesn't turn into a silent empty response again.
+   */
+  private static extractStreamChunkText(
+    chunk: any,
+    decoder: any,
+    setBuffer: (rest: string) => void,
+    buffer: string
+  ): string {
+    if (chunk && typeof chunk === 'object' && !(chunk instanceof Uint8Array) && typeof chunk.response === 'string') {
+      return chunk.response;
+    }
+
+    const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(Object.values(chunk));
+    let sseBuffer = buffer + decoder.decode(bytes, { stream: true });
+    const frames = sseBuffer.split("\n\n");
+    sseBuffer = frames.pop() || "";
+    setBuffer(sseBuffer);
+
+    let text = '';
+    for (const frame of frames) {
+      const line = frame.trim();
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(payload);
+        text += parsed.response || parsed.choices?.[0]?.delta?.content || '';
+      } catch {
+        // Incomplete/malformed frame — skip rather than throw.
+      }
+    }
+    return text;
   }
 
   /**
